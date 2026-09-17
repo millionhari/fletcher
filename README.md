@@ -2,6 +2,8 @@
 
 Release planning, creative review and rollout for artist teams. Replaces the 200-page marketing playbook Google Doc with projects, generated timelines, spec-checked assets, time-coded video review and day-by-day comms plans.
 
+What is built, partial, and still to do, section by section against the playbook: [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Stack
 
 - **Web:** Next.js (App Router), React, Tailwind v4, shadcn/ui (radix-nova preset, themed after Attio's product UI)

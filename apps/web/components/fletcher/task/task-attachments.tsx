@@ -100,7 +100,7 @@ function AttachPopover({ taskId, projectId, onChanged, attachedDeliverableIds }:
   const groups = [...new Set(list.map((c) => c.group))];
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover modal open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild><Button variant="outline" size="xs"><Plus />Attach</Button></PopoverTrigger>
       <PopoverContent align="end" className="w-[380px] p-3">
         <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
