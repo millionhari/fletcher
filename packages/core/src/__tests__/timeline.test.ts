@@ -37,6 +37,11 @@ describe("generateTasks", () => {
     }
   });
 
+  it("carries template checklists onto generated tasks", () => {
+    expect(byKey.release_qc?.checklist.length).toBeGreaterThan(5);
+    expect(byKey.mix?.checklist).toEqual([]);
+  });
+
   it("applies template options", () => {
     const base = generateTasks(ALBUM_RELEASE_TIMELINE, R);
     const physical = generateTasks(ALBUM_RELEASE_TIMELINE, R, { enabledOptions: ["physical"] });

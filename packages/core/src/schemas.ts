@@ -21,6 +21,7 @@ export const timelineTaskDefSchema = z.object({
   snapDirection: z.enum(["back", "forward"]).optional(),
   deliverable: z.object({ kind: z.enum(DELIVERABLE_KINDS), specKey: z.string().optional() }).optional(),
   milestone: z.object({ projectType: z.enum(PROJECT_TYPES), label: z.string() }).optional(),
+  checklist: z.array(z.string().min(1)).optional(),
 });
 
 export const timelineTemplateDefSchema = z.object({

@@ -26,12 +26,22 @@ function describe(e: ActivityEntry): string {
       return `marked ${p.title as string} as ${String(p.status).replace("_", " ")}`;
     case "task.status":
       return `set ${p.title as string} to ${String(p.status).replace("_", " ")}`;
+    case "task.date":
+      return `moved ${p.title as string} to ${p.to as string}`;
+    case "task.assignee":
+      return p.assigneeMemberId ? `reassigned ${p.title as string}` : `unassigned ${p.title as string}`;
+    case "task.renamed":
+      return `renamed "${p.from as string}" to "${p.to as string}"`;
+    case "task.checklist":
+      return `${p.done ? "checked" : "unchecked"} "${p.title as string}"`;
+    case "task.attachment":
+      return `attached ${p.title as string}`;
     default:
       return e.type;
   }
 }
 
-export function ActivityFeed({ entries }: { entries: ActivityEntry[] }) {
+export function ActivityFeed({ entries, compact }: { entries: ActivityEntry[]; compact?: boolean }) {
   if (!entries.length) return <p className="px-1 text-xs text-muted-foreground">No activity yet.</p>;
   return (
     <ol className="space-y-3 px-1">
@@ -40,7 +50,7 @@ export function ActivityFeed({ entries }: { entries: ActivityEntry[] }) {
           <MemberAvatar name={e.actorName} size="xs" />
           <div className="min-w-0 text-xs leading-4">
             <span className="font-medium">{e.actorName ?? "Someone"}</span> <span className="text-muted-foreground">{describe(e)}</span>
-            <div className="text-2xs text-muted-foreground">{e.projectName ? `${e.projectName} · ` : ""}{formatDistanceToNowStrict(new Date(e.createdAt), { addSuffix: true })}</div>
+            <div className="text-2xs text-muted-foreground">{!compact && e.projectName ? `${e.projectName} · ` : ""}{formatDistanceToNowStrict(new Date(e.createdAt), { addSuffix: true })}</div>
           </div>
         </li>
       ))}

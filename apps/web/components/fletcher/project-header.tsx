@@ -41,6 +41,7 @@ export function ProjectHeader() {
   }
   const { project, parent, tasks } = data;
   const done = tasks.filter((t) => t.status === "done").length;
+  const onTaskPage = pathname.includes("/tasks/");
   const tabs = [
     { href: base, label: "Overview", exact: true },
     { href: `${base}/timeline`, label: "Timeline" },
@@ -94,7 +95,7 @@ export function ProjectHeader() {
           </DropdownMenu>
         </div>
       </div>
-      <nav className="mt-5 flex gap-1 border-b border-border">
+      {!onTaskPage && <nav className="mt-5 flex gap-1 border-b border-border">
         {tabs.map((t) => {
           const active = t.exact ? pathname === t.href : pathname.startsWith(t.href);
           return (
@@ -104,7 +105,7 @@ export function ProjectHeader() {
             </Link>
           );
         })}
-      </nav>
+      </nav>}
       <ChangeDateDialog open={dateOpen} onOpenChange={setDateOpen} current={project.anchorDate} label={project.anchorLabel} />
     </div>
   );

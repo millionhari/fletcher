@@ -86,7 +86,7 @@ export function CalendarView() {
                     {cell?.tasks.slice(0, 4).map((t) => (
                       <Tooltip key={t.id}>
                         <TooltipTrigger asChild>
-                          <Link href={`${base}/projects/${t.projectId}/timeline#${t.id}`} className={cn("flex items-center gap-1 truncate rounded px-1 py-px text-2xs hover:bg-accent", t.status === "done" && "text-muted-foreground line-through")}><span className="size-1.5 shrink-0 rounded-full" style={{ background: t.projectColor }} /><span className="truncate">{t.title}</span></Link>
+                          <Link href={`${base}/projects/${t.projectId}/timeline?task=${t.id}`} className={cn("flex items-center gap-1 truncate rounded px-1 py-px text-2xs hover:bg-accent", t.status === "done" && "text-muted-foreground line-through")}><span className="size-1.5 shrink-0 rounded-full" style={{ background: t.projectColor }} /><span className="truncate">{t.title}</span></Link>
                         </TooltipTrigger>
                         <TooltipContent>{t.projectName} · {t.title}</TooltipContent>
                       </Tooltip>

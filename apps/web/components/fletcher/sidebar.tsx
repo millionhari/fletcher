@@ -56,7 +56,7 @@ export function Sidebar({ workspace, workspaces, projects, userName }: { workspa
   const childrenOf = (id: string) => projects.filter((p) => p.parentProjectId === id);
 
   return (
-    <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+    <aside className="sticky top-0 flex h-screen w-60 shrink-0 flex-col self-start border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
       <div className="px-3 pt-3">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

@@ -17,7 +17,7 @@ export const TOUR_ANNOUNCE_TIMELINE: TimelineTemplateDef = {
     { key: "admat", title: "Admat, ticketing photo, ticketing bio", phase: "prep", roleKey: "marketing", offsetDays: -7, deliverable: { kind: "image" } },
     { key: "ad_copy", title: "Approved ad copy (announce / on-sale / low tickets)", phase: "prep", roleKey: "marketing", offsetDays: -7 },
     { key: "announce", title: "Tour announce + Seated presale sign-ups", phase: "announce", roleKey: "social", offsetDays: 0, dependsOn: ["admat"] },
-    { key: "listings", title: "Dates live on Bandsintown, Songkick, Seated; all ticket links checked", phase: "announce", roleKey: "marketing", offsetDays: 0 },
+    { key: "listings", title: "Dates live on Bandsintown, Songkick, Seated; all ticket links checked", phase: "announce", roleKey: "marketing", offsetDays: 0, checklist: ["Seated dates live", "Bandsintown dates live", "Songkick dates live", "Every ticket link opens", "Announce / presale / on-sale times correct on every link"] },
     { key: "artist_presale", title: "Artist presale", phase: "presale", roleKey: "marketing", offsetDays: 1 },
     { key: "spotify_presale", title: "Spotify presale", phase: "presale", roleKey: "marketing", offsetDays: 2 },
     { key: "venue_presale", title: "Venue / promoter presale", phase: "presale", roleKey: "booking_agent", offsetDays: 3 },

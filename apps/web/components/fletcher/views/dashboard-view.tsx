@@ -147,7 +147,7 @@ type TaskRow = { id: string; title: string; dueDate: string | null; status: "tod
 
 function TaskLine({ task, base, overdue }: { task: TaskRow; base: string; overdue?: boolean }) {
   return (
-    <Link href={`${base}/projects/${task.projectId}/timeline#${task.id}`} className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/60">
+    <Link href={`${base}/projects/${task.projectId}/timeline?task=${task.id}`} className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/60">
       <span className="size-2 shrink-0 rounded-[3px]" style={{ background: task.projectColor }} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-medium">{task.title}</div>

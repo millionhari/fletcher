@@ -30,9 +30,9 @@ export const ALBUM_RELEASE_TIMELINE: TimelineTemplateDef = {
     { key: "all_masters", title: "All masters final", phase: "music", roleKey: "mastering_engineer", offsetDays: -49, durationDays: 14 },
     { key: "album_art", title: "Album artwork + packaging final", description: "Cover, back, layered sources, fonts; single art for remaining singles.", phase: "distribution", roleKey: "marketing", offsetDays: -49, durationDays: 21, deliverable: { kind: "image", specKey: "artwork_cover" } },
     { key: "album_metadata", title: "Album label copy, credits, lyrics, UPC + ISRCs", phase: "distribution", roleKey: "label_distributor", offsetDays: -42 },
-    { key: "album_distro", title: "Full album to distributor", description: "All masters, artwork, metadata, lyrics.", phase: "distribution", roleKey: "label_distributor", offsetDays: -42, dependsOn: ["all_masters", "album_art", "album_metadata"] },
+    { key: "album_distro", title: "Full album to distributor", description: "All masters, artwork, metadata, lyrics.", phase: "distribution", roleKey: "label_distributor", offsetDays: -42, dependsOn: ["all_masters", "album_art", "album_metadata"], checklist: ["Every master final", "Album artwork + packaging", "Credits and label copy", "Lyrics for every track", "UPC + ISRCs", "Tracklist order and hidden-tracklist decision"] },
 
-    { key: "listening_sessions", title: "DSP listening sessions", description: "Tastemaker session or individual DSP playbacks.", phase: "announce", roleKey: "marketing", offsetDays: -70 },
+    { key: "listening_sessions", title: "DSP listening sessions", description: "Tastemaker session or individual DSP playbacks.", phase: "announce", roleKey: "marketing", offsetDays: -70, checklist: ["Session date locked", "Invite list (DSP editors, tastemakers)", "Playback link or room", "Pitch deck and one-sheet", "Follow-up notes sent"] },
     { key: "album_presave", title: "Album presave / preorder + Spotify Countdown page live", phase: "announce", roleKey: "marketing", offsetDays: -70, snapTo: "fri" },
     { key: "album_announce", title: "Album announcement (artwork reveal, tracklist, date)", phase: "announce", roleKey: "social", offsetDays: -70, snapTo: "fri", dependsOn: ["album_presave"] },
     { key: "album_press_release", title: "Album press release", phase: "announce", roleKey: "publicist", offsetDays: -72, deliverable: { kind: "document" } },
@@ -45,7 +45,7 @@ export const ALBUM_RELEASE_TIMELINE: TimelineTemplateDef = {
     { key: "album_banners", title: "Album banners + Complete Collection playlist cover", phase: "creative", roleKey: "marketing", offsetDays: -7, deliverable: { kind: "image" } },
     { key: "story_videos", title: "Story-behind-the-song videos (≤ 30 s each)", phase: "creative", roleKey: "artist", offsetDays: -10, deliverable: { kind: "video" } },
 
-    { key: "album_qc", title: "Release-night delivery QC (every track, every DSP)", phase: "release", roleKey: "marketing", offsetDays: 0 },
+    { key: "album_qc", title: "Release-night delivery QC (every track, every DSP)", phase: "release", roleKey: "marketing", offsetDays: 0, checklist: ["Every track on every DSP", "Artwork correct", "Tracklist order correct", "Featured artists tagged", "Countdown page flipped to album"] },
     { key: "album_release", title: "Album out now: posts, link flips, Countdown page → album, Artist Pick", phase: "release", roleKey: "social", offsetDays: 0, dependsOn: ["album_qc"] },
 
     { key: "album_report_fw", title: "Album First Week report", phase: "post", roleKey: "marketing", offsetDays: 7 },

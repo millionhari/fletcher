@@ -24,6 +24,7 @@ export function useInvalidateProject() {
       qc.invalidateQueries({ queryKey: trpc.projects.list.queryKey() }),
       qc.invalidateQueries({ queryKey: trpc.dashboard.overview.queryKey() }),
       qc.invalidateQueries({ queryKey: trpc.comms.getPlan.queryKey({ workspace: ws.slug, projectId }) }),
+      qc.invalidateQueries({ queryKey: trpc.taskDetail.get.queryKey() }),
     ]);
   };
 }

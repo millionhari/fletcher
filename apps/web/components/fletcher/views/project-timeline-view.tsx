@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronRight, Film, GanttChart, List, Plus, Sparkles } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Film, GanttChart, List, ListChecks, MessageSquare, Paperclip, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { fmtDate, offsetLabel } from "@/lib/format";
@@ -21,6 +21,7 @@ import { StatusSelect, AssigneePicker, DatePill } from "@/components/fletcher/ta
 import { RolePill } from "@/components/fletcher/role-pill";
 import { EmptyState } from "@/components/fletcher/empty-state";
 import { useWorkspace } from "@/lib/hooks/use-workspace";
+import { useTaskParam } from "@/lib/hooks/use-task-param";
 
 type Task = NonNullable<ReturnType<typeof useProjectData>["data"]>["tasks"][number];
 
@@ -32,6 +33,7 @@ export function ProjectTimelineView() {
   const [hideDone, setHideDone] = useState(false);
   const [adding, setAdding] = useState(false);
   const today = todayISO();
+  const { setTaskId } = useTaskParam();
 
   const createFromMilestone = useMutation(trpc.tasks.createProjectFromMilestone.mutationOptions({ onSuccess: async (p) => { await invalidate(); toast.success(`${p.name} created`); }, onError: (e) => toast.error(e.message) }));
 
@@ -94,7 +96,7 @@ export function ProjectTimelineView() {
                   <span className="tabular text-2xs text-muted-foreground">{done}/{g.tasks.length}</span>
                 </button>
                 {!isCollapsed && g.tasks.map((t) => (
-                  <TaskRow key={t.id} task={t} anchor={project.anchorDate} today={today} warnings={warningsByTask.get(t.id)} ws={ws.slug} onCreateChild={() => createFromMilestone.mutate({ workspace: ws.slug, taskId: t.id })} creating={createFromMilestone.isPending} />
+                  <TaskRow key={t.id} task={t} anchor={project.anchorDate} today={today} warnings={warningsByTask.get(t.id)} ws={ws.slug} onOpen={() => setTaskId(t.id)} onCreateChild={() => createFromMilestone.mutate({ workspace: ws.slug, taskId: t.id })} creating={createFromMilestone.isPending} />
                 ))}
               </div>
             );
@@ -108,23 +110,33 @@ export function ProjectTimelineView() {
   );
 }
 
-function TaskRow({ task, anchor, today, warnings, ws, onCreateChild, creating }: { task: Task; anchor: string; today: string; warnings?: string[]; ws: string; onCreateChild: () => void; creating: boolean }) {
+function TaskRow({ task, anchor, today, warnings, ws, onOpen, onCreateChild, creating }: { task: Task; anchor: string; today: string; warnings?: string[]; ws: string; onOpen: () => void; onCreateChild: () => void; creating: boolean }) {
   const overdue = !!task.dueDate && task.dueDate < today && task.status !== "done";
   const milestone = task.milestone as { projectType: string; label: string } | null;
   return (
-    <div id={task.id} className={cn("group flex items-center gap-3 border-b border-border px-3 py-1.5 transition-colors last:border-0 hover:bg-muted/40", task.status === "done" && "opacity-60")}>
+    <div
+      id={task.id}
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) onOpen(); }}
+      className={cn("group flex cursor-pointer items-center gap-3 border-b border-border px-3 py-1.5 transition-colors last:border-0 hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none", task.status === "done" && "opacity-60")}
+    >
       <span className="tabular w-14 shrink-0 font-mono text-2xs text-muted-foreground">{offsetLabel(task.dueDate, anchor)}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className={cn("truncate text-[13px] font-medium", task.status === "done" && "line-through")}>{task.title}</span>
+          {task.checklistTotal > 0 && <span className={cn("inline-flex items-center gap-0.5 text-2xs text-muted-foreground", task.checklistDone === task.checklistTotal && "text-success")}><ListChecks className="size-3" />{task.checklistDone}/{task.checklistTotal}</span>}
+          {task.attachmentCount > 0 && <span className="inline-flex items-center gap-0.5 text-2xs text-muted-foreground"><Paperclip className="size-3" />{task.attachmentCount}</span>}
+          {task.commentCount > 0 && <span className="inline-flex items-center gap-0.5 text-2xs text-muted-foreground"><MessageSquare className="size-3" />{task.commentCount}</span>}
           {task.deliverableId && (
-            <Link href={`/w/${ws}/deliverables/${task.deliverableId}`} className="inline-flex items-center gap-1 rounded-md bg-brand-soft px-1.5 text-2xs font-medium text-brand hover:underline"><Film className="size-3" />Review</Link>
+            <Link href={`/w/${ws}/deliverables/${task.deliverableId}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 rounded-md bg-brand-soft px-1.5 text-2xs font-medium text-brand hover:underline"><Film className="size-3" />Review</Link>
           )}
           {milestone && !task.childProjectId && (
-            <button onClick={onCreateChild} disabled={creating} className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-1.5 text-2xs font-medium text-muted-foreground hover:border-brand hover:text-brand"><Sparkles className="size-3" />Create {milestone.label} project</button>
+            <button onClick={(e) => { e.stopPropagation(); onCreateChild(); }} disabled={creating} className="inline-flex items-center gap-1 rounded-md border border-dashed border-border px-1.5 text-2xs font-medium text-muted-foreground hover:border-brand hover:text-brand"><Sparkles className="size-3" />Create {milestone.label} project</button>
           )}
           {milestone && task.childProjectId && (
-            <Link href={`/w/${ws}/projects/${task.childProjectId}`} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 text-2xs font-medium hover:underline">Open {milestone.label}</Link>
+            <Link href={`/w/${ws}/projects/${task.childProjectId}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 text-2xs font-medium hover:underline">Open {milestone.label}</Link>
           )}
           {warnings && warnings.length > 0 && (
             <Tooltip>
@@ -136,9 +148,11 @@ function TaskRow({ task, anchor, today, warnings, ws, onCreateChild, creating }:
         {task.description && <div className="truncate text-2xs text-muted-foreground">{task.description}</div>}
       </div>
       <RolePill role={task.roleKey} className="hidden lg:inline-flex" />
-      <StatusSelect taskId={task.id} status={task.status} />
-      <DatePill taskId={task.id} dueDate={task.dueDate} isOverridden={task.isDateOverridden} overdue={overdue} className="w-[92px] justify-end" />
-      <AssigneePicker taskId={task.id} assigneeMemberId={task.assigneeMemberId} assigneeName={task.assigneeName} roleKey={task.roleKey} />
+      <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
+        <StatusSelect taskId={task.id} status={task.status} />
+        <DatePill taskId={task.id} dueDate={task.dueDate} isOverridden={task.isDateOverridden} overdue={overdue} className="w-[92px] justify-end" />
+        <AssigneePicker taskId={task.id} assigneeMemberId={task.assigneeMemberId} assigneeName={task.assigneeName} roleKey={task.roleKey} />
+      </div>
     </div>
   );
 }

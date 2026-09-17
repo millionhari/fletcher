@@ -17,6 +17,8 @@ export interface TimelineTaskDef {
   deliverable?: { kind: DeliverableKind; specKey?: string };
   /** Milestone that can spawn a child project (e.g. "Single 2" inside an album). */
   milestone?: { projectType: ProjectType; label: string };
+  /** Sub-items seeded into the task's checklist. */
+  checklist?: string[];
 }
 
 export interface TimelinePhaseDef {
@@ -51,6 +53,7 @@ export interface GeneratedTask {
   dependsOn: string[];
   deliverable?: { kind: DeliverableKind; specKey?: string };
   milestone?: { projectType: ProjectType; label: string };
+  checklist: string[];
 }
 
 export interface ShiftableTask {

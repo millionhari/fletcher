@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspace } from "@/lib/hooks/use-workspace";
@@ -20,6 +21,7 @@ export function ProjectsListView() {
   const trpc = useTRPC();
   const { data, isLoading } = useQuery(trpc.projects.list.queryOptions({ workspace: ws.slug, includeArchived: true }));
   const base = `/w/${ws.slug}`;
+  const router = useRouter();
 
   return (
     <div className="fade-in-up">
@@ -43,7 +45,7 @@ export function ProjectsListView() {
             </TableHeader>
             <TableBody>
               {data.map((p) => (
-                <TableRow key={p.id} className="cursor-pointer">
+                <TableRow key={p.id} role="link" tabIndex={0} onClick={() => router.push(`${base}/projects/${p.id}`)} onKeyDown={(e) => { if (e.key === "Enter") router.push(`${base}/projects/${p.id}`); }} className="cursor-pointer">
                   <TableCell>
                     <Link href={`${base}/projects/${p.id}`} className="flex items-center gap-2.5">
                       <span className="size-2.5 shrink-0 rounded-[3px]" style={{ background: p.color }} />

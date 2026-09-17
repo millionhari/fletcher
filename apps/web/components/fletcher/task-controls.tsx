@@ -31,8 +31,8 @@ export function StatusSelect({ taskId, status, size = "sm" }: { taskId: string; 
   const { update } = useTaskUpdate();
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/50" aria-label="Change status">
-        <TaskStatusBadge status={status} className={cn(size === "md" && "h-6 px-2 text-xs")} />
+      <DropdownMenuTrigger className="group/status cursor-pointer rounded-md outline-none focus:outline-none focus-visible:outline-none" aria-label="Change status" title="Change status">
+        <TaskStatusBadge status={status} className={cn("transition-[filter] group-hover/status:brightness-90 group-aria-expanded/status:brightness-90 dark:group-hover/status:brightness-125 dark:group-aria-expanded/status:brightness-125", size === "md" && "h-6 px-2 text-xs")} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">
         {TASK_STATUSES.map((s) => (
@@ -55,7 +55,7 @@ export function AssigneePicker({ taskId, assigneeMemberId, assigneeName, roleKey
   const others = list.filter((m) => m.role !== roleKey);
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring/50" aria-label="Assign">
+      <DropdownMenuTrigger className="group/assignee flex cursor-pointer items-center gap-1.5 rounded-full outline-none focus:outline-none focus-visible:outline-none [&>span:first-child]:transition-[filter] hover:[&>span:first-child]:brightness-90 dark:hover:[&>span:first-child]:brightness-125" aria-label="Assign" title="Assign">
         <MemberAvatar name={assigneeName} size={compact ? "xs" : "sm"} showTooltip={false} />
         {!compact && <span className="text-xs">{assigneeName ?? <span className="text-muted-foreground">Unassigned</span>}</span>}
       </DropdownMenuTrigger>
@@ -92,10 +92,10 @@ export function DatePill({ taskId, dueDate, isOverridden, overdue, className }: 
   const [value, setValue] = useState(dueDate ?? "");
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setValue(dueDate ?? ""); }}>
-      <PopoverTrigger className={cn("tabular inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-xs transition-colors hover:bg-muted", overdue ? "font-medium text-danger" : "text-foreground", className)}>
+      <PopoverTrigger title="Change due date" className={cn("tabular group/date inline-flex h-6 cursor-pointer items-center gap-1 rounded-md px-1.5 text-xs outline-none transition-colors hover:bg-muted focus:outline-none focus-visible:outline-none aria-expanded:bg-muted", overdue ? "font-medium text-danger" : "text-foreground", className)}>
         {isOverridden && <Pin className="size-3 text-warning" />}
-        {fmtDate(dueDate)}
-        <ChevronDown className="size-3 text-muted-foreground" />
+        <span className="underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 group-hover/date:decoration-foreground/60">{fmtDate(dueDate)}</span>
+        <ChevronDown className="size-3 text-muted-foreground transition-colors group-hover/date:text-foreground" />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-3">
         <div className="mb-2 text-xs font-medium">Due date</div>

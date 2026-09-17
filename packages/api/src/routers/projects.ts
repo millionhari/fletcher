@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   addDaysISO,
@@ -13,12 +13,15 @@ import {
 } from "@fletcher/core";
 import {
   activityLog,
+  comments,
   commsMoments,
   commsPlans,
   createProjectWithTemplates,
   deliverableVersions,
   deliverables,
   projects,
+  taskAttachments,
+  taskChecklistItems,
   tasks,
   templates,
   users,
@@ -83,7 +86,27 @@ export const projectsRouter = router({
       .leftJoin(users, eq(workspaceMembers.userId, users.id))
       .where(eq(tasks.projectId, project.id))
       .orderBy(tasks.dueDate, tasks.sortOrder);
-    const taskList = taskRows.map((r) => ({ ...r.task, assigneeName: r.assigneeName }));
+    const taskIds = taskRows.map((r) => r.task.id);
+    const checklistCounts = taskIds.length
+      ? await ctx.db.select({ taskId: taskChecklistItems.taskId, total: sql<number>`count(*)::int`, done: sql<number>`sum(case when ${taskChecklistItems.isDone} then 1 else 0 end)::int` }).from(taskChecklistItems).where(inArray(taskChecklistItems.taskId, taskIds)).groupBy(taskChecklistItems.taskId)
+      : [];
+    const attachmentCounts = taskIds.length
+      ? await ctx.db.select({ taskId: taskAttachments.taskId, n: sql<number>`count(*)::int` }).from(taskAttachments).where(inArray(taskAttachments.taskId, taskIds)).groupBy(taskAttachments.taskId)
+      : [];
+    const commentCounts = taskIds.length
+      ? await ctx.db.select({ taskId: comments.taskId, n: sql<number>`count(*)::int` }).from(comments).where(and(inArray(comments.taskId, taskIds), isNull(comments.parentCommentId))).groupBy(comments.taskId)
+      : [];
+    const cl = new Map(checklistCounts.map((c) => [c.taskId, c]));
+    const at = new Map(attachmentCounts.map((c) => [c.taskId, c.n]));
+    const cm = new Map(commentCounts.map((c) => [c.taskId!, c.n]));
+    const taskList = taskRows.map((r) => ({
+      ...r.task,
+      assigneeName: r.assigneeName,
+      checklistTotal: cl.get(r.task.id)?.total ?? 0,
+      checklistDone: cl.get(r.task.id)?.done ?? 0,
+      attachmentCount: at.get(r.task.id) ?? 0,
+      commentCount: cm.get(r.task.id) ?? 0,
+    }));
 
     const deliverableRows = await ctx.db.query.deliverables.findMany({
       where: eq(deliverables.projectId, project.id),

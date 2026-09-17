@@ -1,5 +1,6 @@
 import { ProjectIdProvider } from "@/lib/hooks/use-project";
 import { ProjectHeader } from "@/components/fletcher/project-header";
+import { TaskPanelSheet } from "@/components/fletcher/task/task-panel-sheet";
 
 export default async function ProjectLayout({ children, params }: LayoutProps<"/w/[slug]/projects/[id]">) {
   const { id } = await params;
@@ -7,6 +8,7 @@ export default async function ProjectLayout({ children, params }: LayoutProps<"/
     <ProjectIdProvider id={id}>
       <ProjectHeader />
       {children}
+      <TaskPanelSheet />
     </ProjectIdProvider>
   );
 }

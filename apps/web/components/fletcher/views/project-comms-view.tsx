@@ -41,6 +41,7 @@ export function ProjectCommsView() {
   const invalidate = useInvalidateProject();
   const members = useMembers();
   const [adding, setAdding] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const today = todayISO();
 
   const assignPlatform = useMutation(trpc.comms.assignPlatform.mutationOptions({ onSuccess: async (r) => { await invalidate(); toast.success(`${r.updated} items assigned`); }, onError: (e) => toast.error(e.message) }));
@@ -83,8 +84,8 @@ export function ProjectCommsView() {
                 </thead>
                 <tbody>
                   {moments.map((m) => (
-                    <tr key={m.id} className="border-t border-border hover:bg-muted/40">
-                      <td className="tabular whitespace-nowrap px-3 py-1.5 font-medium"><a href={`#${m.id}`} className="hover:underline">{fmtDate(m.scheduledDate, "weekday")}</a> <span className="text-2xs font-normal text-muted-foreground">{relativeDays(m.scheduledDate)}</span></td>
+                    <tr key={m.id} onClick={() => document.getElementById(m.id)?.scrollIntoView({ behavior: "smooth", block: "start" })} onMouseEnter={() => setHoveredId(m.id)} onMouseLeave={() => setHoveredId(null)} className={cn("cursor-pointer border-t border-border transition-colors hover:brightness-[0.97]", momentTone(m.status, !!m.scheduledDate && m.scheduledDate < today).row || "hover:bg-muted/40")}>
+                      <td className="tabular whitespace-nowrap px-3 py-1.5 font-medium">{fmtDate(m.scheduledDate, "weekday")} <span className="text-2xs font-normal text-muted-foreground">{relativeDays(m.scheduledDate)}</span></td>
                       <td className="tabular whitespace-nowrap px-3 py-1.5 text-muted-foreground">{fmtTime(m.scheduledTime)}{m.timezone ? ` ${tzAbbr(m.timezone)}` : ""}</td>
                       <td className="px-3 py-1.5 font-medium">{m.title}</td>
                       <td className="max-w-[280px] truncate px-3 py-1.5 text-muted-foreground">{m.cta}</td>
@@ -109,7 +110,7 @@ export function ProjectCommsView() {
           <section>
             <SectionHeader title="Rollout" count={moments.length} />
             <div className="space-y-3">
-              {moments.map((m) => <MomentCard key={m.id} moment={m} today={today} deliverables={data.deliverables} />)}
+              {moments.map((m) => <MomentCard key={m.id} moment={m} today={today} deliverables={data.deliverables} highlighted={hoveredId === m.id} />)}
             </div>
           </section>
         </>
@@ -145,7 +146,16 @@ function tzAbbr(tz: string): string {
   }
 }
 
-function MomentCard({ moment, today, deliverables }: { moment: Moment; today: string; deliverables: { id: string; title: string; kind: string }[] }) {
+/** Whole-container tint per status; a planned moment past its date reads as missed. */
+function momentTone(status: MomentStatus, past: boolean): { card: string; header: string; row: string; date: string; body: string } {
+  if (status === "posted") return { card: "border-success", header: "", row: "bg-success-soft", date: "text-success", body: "border-success/40" };
+  if (status === "ready") return { card: "border-info", header: "", row: "bg-info-soft", date: "text-info", body: "border-info/40" };
+  if (status === "skipped") return { card: "border-warning opacity-80", header: "", row: "bg-warning-soft text-muted-foreground", date: "text-warning", body: "border-warning/40" };
+  if (past) return { card: "border-danger", header: "", row: "bg-danger-soft", date: "text-danger", body: "border-danger/40" };
+  return { card: "", header: "", row: "", date: "", body: "border-border" };
+}
+
+function MomentCard({ moment, today, deliverables, highlighted = false }: { moment: Moment; today: string; deliverables: { id: string; title: string; kind: string }[]; highlighted?: boolean }) {
   const { ws, trpc } = useProjectData();
   const invalidate = useInvalidateProject();
   const [open, setOpen] = useState(!moment.isChecklist && (moment.scheduledDate ?? "") >= today);
@@ -156,15 +166,16 @@ function MomentCard({ moment, today, deliverables }: { moment: Moment; today: st
   const groups = useMemo(() => groupByPlatform(moment.items), [moment.items]);
   const done = pct(moment.progress.done, moment.progress.total);
   const past = !moment.isChecklist && !!moment.scheduledDate && moment.scheduledDate < today;
+  const tone = momentTone(moment.isChecklist ? "planned" : moment.status, past);
 
   return (
-    <div id={moment.id} className={cn("surface overflow-hidden scroll-mt-20", moment.status === "posted" && "opacity-75")}>
-      <div className="flex items-start gap-3 px-4 py-3">
+    <div id={moment.id} className={cn("surface overflow-hidden scroll-mt-20 transition-all duration-200", tone.card, highlighted && "border-brand shadow-float ring-2 ring-brand/40")}>
+      <div className={cn("flex items-start gap-3 px-4 py-3", tone.header)}>
         <button onClick={() => setOpen(!open)} className="mt-1 text-muted-foreground" aria-label="Toggle">{open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}</button>
         {!moment.isChecklist && (
           <div className="w-16 shrink-0 text-center">
-            <div className="text-2xs uppercase tracking-wider text-muted-foreground">{moment.scheduledDate ? fmtDate(moment.scheduledDate).split(" ")[0] : "—"}</div>
-            <div className="tabular text-xl font-semibold leading-6">{moment.scheduledDate ? fmtDate(moment.scheduledDate).split(" ")[1] : "·"}</div>
+            <div className={cn("text-2xs uppercase tracking-wider text-muted-foreground", tone.date)}>{moment.scheduledDate ? fmtDate(moment.scheduledDate).split(" ")[0] : "—"}</div>
+            <div className={cn("tabular text-xl font-semibold leading-6", tone.date)}>{moment.scheduledDate ? fmtDate(moment.scheduledDate).split(" ")[1] : "·"}</div>
             <div className="tabular text-2xs text-muted-foreground">{fmtTime(moment.scheduledTime) || "—"}</div>
           </div>
         )}
@@ -202,11 +213,11 @@ function MomentCard({ moment, today, deliverables }: { moment: Moment; today: st
         </div>
       </div>
       {open && (
-        <div className="border-t border-border">
+        <div className={cn("border-t", tone.body)}>
           {groups.length === 0 && <p className="px-4 py-3 text-xs text-muted-foreground">No checklist items. <button className="text-brand hover:underline" onClick={() => setAddingItem({ parentId: null })}>Add one.</button></p>}
           <div className="grid gap-x-6 md:grid-cols-2 xl:grid-cols-3">
             {groups.map((g) => (
-              <div key={g.platform} className="border-b border-border px-4 py-2.5 md:[&:nth-child(2n)]:border-l xl:[&:nth-child(2n)]:border-l-0 xl:[&:nth-child(3n+2)]:border-l xl:[&:nth-child(3n)]:border-l">
+              <div key={g.platform} className="border-b border-inherit px-4 py-2.5 md:[&:nth-child(2n)]:border-l xl:[&:nth-child(2n)]:border-l-0 xl:[&:nth-child(3n+2)]:border-l xl:[&:nth-child(3n)]:border-l">
                 <div className="mb-1.5 flex items-center justify-between">
                   <PlatformLabel platform={g.platform} />
                   <span className="tabular text-2xs text-muted-foreground">{g.done}/{g.total}</span>
@@ -244,8 +255,8 @@ function ItemRow({ item, depth, momentId, onAddChild }: { item: ItemNode; depth:
   return (
     <li>
       <div className={cn("group flex items-start gap-2 rounded-md py-0.5 pr-1 hover:bg-muted/50", depth > 0 && "ml-5")}>
-        <Checkbox checked={item.isDone} onCheckedChange={(v) => toggle.mutate({ workspace: ws.slug, itemId: item.id, isDone: !!v })} className="mt-0.5" />
-        <span className={cn("min-w-0 flex-1 text-xs leading-4", item.isDone && "text-muted-foreground line-through")}>{item.title}</span>
+        <Checkbox id={`ci-${item.id}`} checked={item.isDone} onCheckedChange={(v) => toggle.mutate({ workspace: ws.slug, itemId: item.id, isDone: !!v })} className="mt-0.5" />
+        <label htmlFor={`ci-${item.id}`} className={cn("min-w-0 flex-1 cursor-pointer text-xs leading-4", item.isDone && "text-muted-foreground line-through")}>{item.title}</label>
         <DropdownMenu>
           <DropdownMenuTrigger className="rounded-full outline-none" aria-label="Owner"><MemberAvatar name={item.ownerName} size="xs" showTooltip={false} className={cn(!item.ownerName && "opacity-40 group-hover:opacity-100")} /></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">

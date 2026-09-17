@@ -1,6 +1,7 @@
 import { relations, sql } from "drizzle-orm";
 import {
   boolean,
+  check,
   date,
   index,
   integer,
@@ -181,17 +182,56 @@ export const tasks = pgTable(
     milestone: jsonb("milestone"),
     childProjectId: uuid("child_project_id").references(() => projects.id, { onDelete: "set null" }),
     parentTaskId: uuid("parent_task_id"),
+    doc: jsonb("doc"),
+    docText: text("doc_text"),
+    docUpdatedAt: timestamp("doc_updated_at", { withTimezone: true }),
     sortOrder: integer("sort_order").notNull().default(0),
     ...timestamps,
   },
   (t) => [index("tasks_project_idx").on(t.projectId, t.dueDate), index("tasks_assignee_idx").on(t.assigneeMemberId)],
 );
 
+export const taskChecklistItems = pgTable(
+  "task_checklist_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    isDone: boolean("is_done").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(0),
+    ...timestamps,
+  },
+  (t) => [index("task_checklist_task_idx").on(t.taskId, t.sortOrder)],
+);
+
+export const attachmentKindEnum = pgEnum("attachment_kind", ["deliverable", "link", "file"]);
+
+export const taskAttachments = pgTable(
+  "task_attachments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    taskId: uuid("task_id").notNull().references(() => tasks.id, { onDelete: "cascade" }),
+    kind: attachmentKindEnum("kind").notNull(),
+    deliverableId: uuid("deliverable_id").references(() => deliverables.id, { onDelete: "cascade" }),
+    url: text("url"),
+    title: text("title"),
+    storageKey: text("storage_key"),
+    fileName: text("file_name"),
+    mimeType: text("mime_type"),
+    bytes: integer("bytes"),
+    addedByMemberId: uuid("added_by_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("task_attachments_task_idx").on(t.taskId, t.sortOrder)],
+);
+
 export const comments = pgTable(
   "comments",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    versionId: uuid("version_id").notNull().references(() => deliverableVersions.id, { onDelete: "cascade" }),
+    versionId: uuid("version_id").references(() => deliverableVersions.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }),
     authorMemberId: uuid("author_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),
     body: text("body").notNull(),
     timestampSeconds: real("timestamp_seconds"),
@@ -200,7 +240,11 @@ export const comments = pgTable(
     resolvedByMemberId: uuid("resolved_by_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("comments_version_idx").on(t.versionId)],
+  (t) => [
+    index("comments_version_idx").on(t.versionId),
+    index("comments_task_idx").on(t.taskId),
+    check("comments_one_target", sql`(${t.versionId} is not null) <> (${t.taskId} is not null)`),
+  ],
 );
 
 export const commsPlans = pgTable("comms_plans", {
@@ -257,12 +301,13 @@ export const activityLog = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }),
     actorMemberId: uuid("actor_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),
     type: text("type").notNull(),
     payload: jsonb("payload").notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("activity_workspace_idx").on(t.workspaceId, t.createdAt)],
+  (t) => [index("activity_workspace_idx").on(t.workspaceId, t.createdAt), index("activity_task_idx").on(t.taskId, t.createdAt)],
 );
 
 // Relations (for db.query.* convenience)
@@ -284,10 +329,20 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   commsPlan: one(commsPlans, { fields: [projects.id], references: [commsPlans.projectId] }),
   timelineTemplate: one(templates, { fields: [projects.timelineTemplateId], references: [templates.id] }),
 }));
-export const tasksRelations = relations(tasks, ({ one }) => ({
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
   project: one(projects, { fields: [tasks.projectId], references: [projects.id] }),
   assignee: one(workspaceMembers, { fields: [tasks.assigneeMemberId], references: [workspaceMembers.id] }),
   deliverable: one(deliverables, { fields: [tasks.deliverableId], references: [deliverables.id] }),
+  checklist: many(taskChecklistItems),
+  attachments: many(taskAttachments),
+}));
+export const taskChecklistItemsRelations = relations(taskChecklistItems, ({ one }) => ({
+  task: one(tasks, { fields: [taskChecklistItems.taskId], references: [tasks.id] }),
+}));
+export const taskAttachmentsRelations = relations(taskAttachments, ({ one }) => ({
+  task: one(tasks, { fields: [taskAttachments.taskId], references: [tasks.id] }),
+  deliverable: one(deliverables, { fields: [taskAttachments.deliverableId], references: [deliverables.id] }),
+  addedBy: one(workspaceMembers, { fields: [taskAttachments.addedByMemberId], references: [workspaceMembers.id] }),
 }));
 export const deliverablesRelations = relations(deliverables, ({ one, many }) => ({
   project: one(projects, { fields: [deliverables.projectId], references: [projects.id] }),
@@ -300,6 +355,7 @@ export const deliverableVersionsRelations = relations(deliverableVersions, ({ on
 }));
 export const commentsRelations = relations(comments, ({ one }) => ({
   version: one(deliverableVersions, { fields: [comments.versionId], references: [deliverableVersions.id] }),
+  task: one(tasks, { fields: [comments.taskId], references: [tasks.id] }),
   author: one(workspaceMembers, { fields: [comments.authorMemberId], references: [workspaceMembers.id] }),
 }));
 export const commsPlansRelations = relations(commsPlans, ({ one, many }) => ({

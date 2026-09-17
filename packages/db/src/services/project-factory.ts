@@ -10,7 +10,7 @@ import {
   type TimelineTemplateDef,
 } from "@fletcher/core";
 import type { Db } from "../client";
-import { commsMomentItems, commsMoments, commsPlans, deliverables, projects, tasks, templates } from "../schema";
+import { commsMomentItems, commsMoments, commsPlans, deliverables, projects, taskAttachments, taskChecklistItems, tasks, templates } from "../schema";
 
 export interface CreateProjectInput {
   workspaceId: string;
@@ -164,20 +164,29 @@ export async function createProjectWithTemplates(db: Db, input: CreateProjectInp
           .returning({ id: deliverables.id });
         deliverableId = d!.id;
       }
-      await db.insert(tasks).values({
-        projectId: project!.id,
-        templateKey: g.key,
-        title: g.title,
-        description: g.description ?? null,
-        phase: g.phase,
-        roleKey: g.roleKey,
-        startDate: g.startDate,
-        dueDate: g.dueDate,
-        dependsOn: g.dependsOn,
-        deliverableId,
-        milestone: g.milestone ?? null,
-        sortOrder: g.sortOrder,
-      });
+      const [task] = await db
+        .insert(tasks)
+        .values({
+          projectId: project!.id,
+          templateKey: g.key,
+          title: g.title,
+          description: g.description ?? null,
+          phase: g.phase,
+          roleKey: g.roleKey,
+          startDate: g.startDate,
+          dueDate: g.dueDate,
+          dependsOn: g.dependsOn,
+          deliverableId,
+          milestone: g.milestone ?? null,
+          sortOrder: g.sortOrder,
+        })
+        .returning({ id: tasks.id });
+      if (g.checklist.length) {
+        await db.insert(taskChecklistItems).values(g.checklist.map((title, i) => ({ taskId: task!.id, title, sortOrder: i })));
+      }
+      if (deliverableId) {
+        await db.insert(taskAttachments).values({ taskId: task!.id, kind: "deliverable", deliverableId, sortOrder: 0 });
+      }
     }
   }
 

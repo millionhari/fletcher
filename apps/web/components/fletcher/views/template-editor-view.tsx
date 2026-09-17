@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import { PlatformIcon } from "@/components/fletcher/platform-icon";
 import { Pill } from "@/components/fletcher/status-badge";
 
@@ -83,8 +85,8 @@ function TimelineEditor({ initial, name: initialName, readOnly, saving, onSave }
         {!readOnly && <Button size="sm" disabled={!dirty || saving} onClick={() => onSave(def, name)}>{saving ? "Saving…" : dirty ? "Save changes" : "Saved"}</Button>}
       </div>
       <div className="surface overflow-hidden">
-        <div className="grid grid-cols-[72px_1fr_160px_70px_70px_90px_32px] items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
-          <span>Offset</span><span>Task</span><span>Role</span><span>Duration</span><span>Snap</span><span>Deliverable</span><span />
+        <div className="grid grid-cols-[72px_1fr_160px_70px_70px_90px_60px_32px] items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <span>Offset</span><span>Task</span><span>Role</span><span>Duration</span><span>Snap</span><span>Deliverable</span><span>Checklist</span><span />
         </div>
         {byPhase.map(({ phase, rows }) => (
           <div key={phase.key}>
@@ -93,7 +95,7 @@ function TimelineEditor({ initial, name: initialName, readOnly, saving, onSave }
               {!readOnly && <Button variant="ghost" size="xs" onClick={() => addTask(phase.key)}><Plus />Task</Button>}
             </div>
             {rows.map(({ t, i }) => (
-              <div key={t.key} className="grid grid-cols-[72px_1fr_160px_70px_70px_90px_32px] items-center gap-2 border-b border-border px-3 py-1 last:border-0">
+              <div key={t.key} className="grid grid-cols-[72px_1fr_160px_70px_70px_90px_60px_32px] items-center gap-2 border-b border-border px-3 py-1 last:border-0">
                 <Input type="number" disabled={readOnly} value={t.offsetDays} onChange={(e) => setTask(i, { offsetDays: Number(e.target.value) })} className="tabular h-7 font-mono text-xs" />
                 <div className="min-w-0">
                   <Input disabled={readOnly} value={t.title} onChange={(e) => setTask(i, { title: e.target.value })} className="h-7 text-xs" />
@@ -103,6 +105,13 @@ function TimelineEditor({ initial, name: initialName, readOnly, saving, onSave }
                 <Input type="number" min={0} disabled={readOnly} value={t.durationDays ?? 0} onChange={(e) => setTask(i, { durationDays: Number(e.target.value) || undefined })} className="tabular h-7 font-mono text-xs" />
                 <Select disabled={readOnly} value={t.snapTo ?? "none"} onValueChange={(v) => setTask(i, { snapTo: v === "none" ? undefined : (v as TimelineTaskDef["snapTo"]) })}><SelectTrigger size="sm" className="h-7 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">—</SelectItem>{["mon", "tue", "wed", "thu", "fri"].map((d) => <SelectItem key={d} value={d}>{d[0]!.toUpperCase() + d.slice(1)}</SelectItem>)}</SelectContent></Select>
                 <Select disabled={readOnly} value={t.deliverable?.kind ?? "none"} onValueChange={(v) => setTask(i, { deliverable: v === "none" ? undefined : { kind: v as never, specKey: t.deliverable?.specKey } })}><SelectTrigger size="sm" className="h-7 text-xs"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">—</SelectItem>{["video", "image", "audio", "document", "link"].map((k) => <SelectItem key={k} value={k}>{k}</SelectItem>)}</SelectContent></Select>
+                <Popover>
+                  <PopoverTrigger asChild><Button variant="ghost" size="xs" className="tabular justify-start px-1 font-mono text-2xs">{t.checklist?.length ?? 0} items</Button></PopoverTrigger>
+                  <PopoverContent align="end" className="w-80 p-3">
+                    <div className="mb-1 text-xs font-medium">Checklist items (one per line)</div>
+                    <Textarea rows={6} disabled={readOnly} value={(t.checklist ?? []).join("\n")} onChange={(e) => setTask(i, { checklist: e.target.value.split("\n").map((x) => x.trim()).filter(Boolean) })} className="text-xs" />
+                  </PopoverContent>
+                </Popover>
                 {!readOnly ? <Button variant="ghost" size="icon-xs" aria-label="Remove" onClick={() => removeTask(i)}><Trash2 /></Button> : <span />}
               </div>
             ))}

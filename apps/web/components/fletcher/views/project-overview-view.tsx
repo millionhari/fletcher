@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { fmtDate, offsetLabel, relativeDays } from "@/lib/format";
 import { releaseInfoSchema, todayISO, type ReleaseInfo } from "@fletcher/core";
 import { useProjectData, useInvalidateProject } from "@/lib/hooks/use-project-data";
+import { useTaskParam } from "@/lib/hooks/use-task-param";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
@@ -45,6 +46,7 @@ export function ProjectOverviewView() {
   const { data, isLoading, ws, projectId, trpc } = useProjectData();
   const invalidate = useInvalidateProject();
   const [editing, setEditing] = useState(false);
+  const { setTaskId } = useTaskParam();
   const info = useMemo(() => (data ? releaseInfoSchema.parse(data.project.releaseInfo ?? {}) : ({} as ReleaseInfo)), [data]);
   const [draft, setDraft] = useState<ReleaseInfo>({});
   const save = useMutation(trpc.projects.update.mutationOptions({ onSuccess: async () => { await invalidate(); setEditing(false); toast.success("Release info saved"); }, onError: (e) => toast.error(e.message) }));
@@ -112,12 +114,14 @@ export function ProjectOverviewView() {
           ) : (
             <div className="surface divide-y divide-border">
               {next.map((t) => (
-                <div key={t.id} className="flex items-center gap-3 px-3 py-2">
+                <div key={t.id} onClick={() => setTaskId(t.id)} className="flex cursor-pointer items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/40">
                   <span className="tabular w-14 shrink-0 font-mono text-2xs text-muted-foreground">{offsetLabel(t.dueDate, project.anchorDate)}</span>
-                  <div className="min-w-0 flex-1 truncate text-[13px] font-medium">{t.title}</div>
-                  <StatusSelect taskId={t.id} status={t.status} />
-                  <DatePill taskId={t.id} dueDate={t.dueDate} isOverridden={t.isDateOverridden} overdue={!!t.dueDate && t.dueDate < today} />
-                  <AssigneePicker taskId={t.id} assigneeMemberId={t.assigneeMemberId} assigneeName={t.assigneeName} roleKey={t.roleKey} />
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{t.title}</span>
+                  <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                    <StatusSelect taskId={t.id} status={t.status} />
+                    <DatePill taskId={t.id} dueDate={t.dueDate} isOverridden={t.isDateOverridden} overdue={!!t.dueDate && t.dueDate < today} />
+                    <AssigneePicker taskId={t.id} assigneeMemberId={t.assigneeMemberId} assigneeName={t.assigneeName} roleKey={t.roleKey} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -165,7 +169,7 @@ export function ProjectOverviewView() {
       </div>
 
       <Sheet open={editing} onOpenChange={setEditing}>
-        <SheetContent className="w-[560px] sm:max-w-[560px] overflow-y-auto">
+        <SheetContent className="overflow-y-auto data-[side=right]:w-[560px] data-[side=right]:sm:max-w-[560px]">
           <SheetHeader>
             <SheetTitle>Release info</SheetTitle>
             <SheetDescription>Identifiers, links and pitch copy for {project.name}.</SheetDescription>

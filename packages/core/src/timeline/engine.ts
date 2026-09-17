@@ -61,6 +61,7 @@ export function generateTasks(
       dependsOn: t.dependsOn ?? [],
       deliverable: t.deliverable,
       milestone: t.milestone,
+      checklist: t.checklist ?? [],
     } satisfies GeneratedTask;
   });
   generated.sort((a, b) => {

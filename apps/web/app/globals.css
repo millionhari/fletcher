@@ -183,6 +183,65 @@
   ::selection {
     background: color-mix(in oklab, var(--brand) 22%, transparent);
   }
+
+  /* Everything interactive reads as clickable, app-wide. */
+  button,
+  [role="button"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"],
+  [role="tab"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="combobox"],
+  [role="link"],
+  a[href],
+  label[for],
+  summary,
+  select,
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+  }
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [data-disabled],
+  [disabled] {
+    cursor: not-allowed;
+  }
+  [draggable="true"]:active {
+    cursor: grabbing;
+  }
+
+  /* Hover feedback for primitives that ship without it. */
+  [data-slot="checkbox"]:not([data-disabled]):hover,
+  [data-slot="radio-group-item"]:not([data-disabled]):hover {
+    border-color: color-mix(in oklab, var(--foreground) 45%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--foreground) 6%, transparent);
+  }
+  [data-slot="checkbox"][data-state="checked"]:not([data-disabled]):hover {
+    filter: brightness(0.9);
+  }
+  [data-slot="select-trigger"]:not([data-disabled]):hover,
+  [data-slot="select-trigger"][data-state="open"] {
+    background: var(--muted);
+  }
+  [data-slot="switch"]:not([data-disabled]):hover {
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--foreground) 8%, transparent);
+  }
+  [data-slot="tabs-trigger"]:not([data-state="active"]):hover,
+  [data-slot="toggle-group-item"]:not([data-state="on"]):hover {
+    color: var(--foreground);
+  }
+  input[type="date"]:hover,
+  input[type="time"]:hover {
+    border-color: color-mix(in oklab, var(--foreground) 35%, transparent);
+  }
 }
 
 @layer utilities {
@@ -193,8 +252,7 @@
     box-shadow: var(--shadow-hairline);
   }
   .surface {
-    @apply bg-card rounded-xl;
-    box-shadow: var(--shadow-card);
+    @apply bg-card rounded-xl border border-border;
   }
   .scrollbar-thin {
     scrollbar-width: thin;
@@ -219,3 +277,34 @@
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* Task doc editor (Tiptap) */
+.prose-fletcher {
+  @apply text-[13.5px] leading-6 text-foreground;
+}
+.prose-fletcher:focus { outline: none; }
+.prose-fletcher > * + * { margin-top: 0.5rem; }
+.prose-fletcher h1 { @apply mt-4 text-lg font-semibold leading-6; }
+.prose-fletcher h2 { @apply mt-4 text-base font-semibold leading-6; }
+.prose-fletcher h3 { @apply mt-3 text-sm font-semibold; }
+.prose-fletcher p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  @apply pointer-events-none float-left h-0 text-muted-foreground;
+}
+.prose-fletcher ul { @apply list-disc pl-5; }
+.prose-fletcher ol { @apply list-decimal pl-5; }
+.prose-fletcher li + li { margin-top: 0.125rem; }
+.prose-fletcher a { @apply text-brand underline underline-offset-2; }
+.prose-fletcher code { @apply rounded bg-muted px-1 py-px font-mono text-[12px]; }
+.prose-fletcher pre { @apply rounded-lg bg-muted p-3 font-mono text-[12px]; }
+.prose-fletcher blockquote { @apply border-l-2 border-border pl-3 text-muted-foreground; }
+.prose-fletcher hr { @apply my-3 border-border; }
+.prose-fletcher ul[data-type="taskList"] { @apply list-none pl-0; }
+.prose-fletcher ul[data-type="taskList"] li { @apply flex items-start gap-2; }
+.prose-fletcher ul[data-type="taskList"] li > label { @apply mt-1 flex shrink-0; }
+.prose-fletcher ul[data-type="taskList"] li > label input {
+  @apply size-3.5 cursor-pointer appearance-none rounded-[4px] border border-input bg-background;
+}
+.prose-fletcher ul[data-type="taskList"] li > label input:checked { @apply border-primary bg-primary; }
+.prose-fletcher ul[data-type="taskList"] li > div { @apply min-w-0 flex-1; }
+.prose-fletcher ul[data-type="taskList"] li[data-checked="true"] > div { @apply text-muted-foreground line-through; }

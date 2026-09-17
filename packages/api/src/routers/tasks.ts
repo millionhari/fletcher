@@ -42,13 +42,13 @@ export const tasksRouter = router({
       if (clearOverride) patch.isDateOverridden = false;
       const [updated] = await ctx.db.update(tasks).set(patch).where(eq(tasks.id, task.id)).returning();
       if (input.status && input.status !== task.status) {
-        await ctx.db.insert(activityLog).values({
-          workspaceId: ctx.workspace.id,
-          projectId: task.projectId,
-          actorMemberId: ctx.member.id,
-          type: "task.status",
-          payload: { title: task.title, status: input.status },
-        });
+        await ctx.db.insert(activityLog).values({ workspaceId: ctx.workspace.id, projectId: task.projectId, taskId: task.id, actorMemberId: ctx.member.id, type: "task.status", payload: { title: task.title, status: input.status } });
+      }
+      if (input.dueDate !== undefined && input.dueDate !== task.dueDate) {
+        await ctx.db.insert(activityLog).values({ workspaceId: ctx.workspace.id, projectId: task.projectId, taskId: task.id, actorMemberId: ctx.member.id, type: "task.date", payload: { title: task.title, from: task.dueDate, to: input.dueDate } });
+      }
+      if (input.assigneeMemberId !== undefined && input.assigneeMemberId !== task.assigneeMemberId) {
+        await ctx.db.insert(activityLog).values({ workspaceId: ctx.workspace.id, projectId: task.projectId, taskId: task.id, actorMemberId: ctx.member.id, type: "task.assignee", payload: { title: task.title, assigneeMemberId: input.assigneeMemberId } });
       }
       return updated!;
     }),
