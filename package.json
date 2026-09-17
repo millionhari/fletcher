@@ -1,0 +1,26 @@
+{
+  "name": "fletcher",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.9",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "turbo run dev --filter=@fletcher/web",
+    "build": "turbo run build",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:generate": "pnpm --filter @fletcher/db generate",
+    "db:migrate": "pnpm --filter @fletcher/db migrate",
+    "db:push": "pnpm --filter @fletcher/db push",
+    "db:seed": "pnpm --filter @fletcher/db seed",
+    "db:reset": "pnpm --filter @fletcher/db reset",
+    "db:studio": "pnpm --filter @fletcher/db studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.10.13",
+    "typescript": "~5.9.3"
+  }
+}

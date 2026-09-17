@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: fletcher-postgres
+    environment:
+      POSTGRES_USER: fletcher
+      POSTGRES_PASSWORD: fletcher
+      POSTGRES_DB: fletcher
+    ports:
+      - "5433:5432"
+    volumes:
+      - fletcher_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fletcher -d fletcher"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  fletcher_pgdata:

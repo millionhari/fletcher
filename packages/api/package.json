@@ -1,0 +1,28 @@
+{
+  "name": "@fletcher/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./storage": "./src/storage.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fletcher/core": "workspace:*",
+    "@fletcher/db": "workspace:*",
+    "@trpc/server": "^11.19.0",
+    "drizzle-orm": "^0.45.2",
+    "sharp": "^0.35.4",
+    "superjson": "^2.2.6",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "~5.9.3"
+  }
+}
