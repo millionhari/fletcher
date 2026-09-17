@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PageHeader } from "@/components/fletcher/page-header";
 import { RolePill } from "@/components/fletcher/role-pill";
+import { useBack } from "@/lib/hooks/use-nav-depth";
 
 const TYPES: { type: ProjectType; icon: React.ComponentType<{ className?: string }>; blurb: string }[] = [
   { type: "single", icon: Music2, blurb: "One track. Production → distro → pitch → announce → release → reports." },
@@ -68,6 +69,7 @@ export function NewProjectWizard({ parentProjectId, initialType }: { parentProje
   const preview = useMemo(() => (timelineDef ? generateTasks(timelineDef, anchorDate, { enabledOptions }) : []), [timelineDef, anchorDate, enabledOptions]);
   const momentsPreview = useMemo(() => (commsDef ? generateCommsMoments(commsDef, anchorDate) : []), [commsDef, anchorDate]);
 
+  const goBack = useBack(`/w/${ws.slug}/projects`);
   const create = useMutation(
     trpc.projects.create.mutationOptions({
       onSuccess: async (project) => {
@@ -197,7 +199,7 @@ export function NewProjectWizard({ parentProjectId, initialType }: { parentProje
       )}
 
       <div className="mt-6 flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={() => (step === 0 ? router.back() : setStep(step - 1))}><ArrowLeft />{step === 0 ? "Cancel" : "Back"}</Button>
+        <Button variant="ghost" size="sm" onClick={() => (step === 0 ? goBack() : setStep(step - 1))}><ArrowLeft />{step === 0 ? "Cancel" : "Back"}</Button>
         {step < 2 ? (
           <Button size="sm" disabled={!canContinue} onClick={() => setStep(step + 1)}>Continue<ArrowRight /></Button>
         ) : (

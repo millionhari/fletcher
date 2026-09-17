@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Textarea } from "@/components/ui/textarea";
 import { PlatformIcon } from "@/components/fletcher/platform-icon";
 import { Pill } from "@/components/fletcher/status-badge";
+import { BackButton } from "@/components/fletcher/back-button";
 
 export function TemplateEditorView({ templateId }: { templateId: string }) {
   const ws = useWorkspace();
@@ -35,7 +36,9 @@ export function TemplateEditorView({ templateId }: { templateId: string }) {
 
   return (
     <div className="fade-in-up">
-      <div className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
+      <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <BackButton fallback={`/w/${ws.slug}/templates`} />
+        <span className="h-4 w-px bg-border" />
         <Link href={`/w/${ws.slug}/templates`} className="hover:text-foreground">Templates</Link><ChevronRight className="size-3" /><span className="text-foreground">{t.name}</span>
       </div>
       <div className="mb-6 flex items-start justify-between gap-6">

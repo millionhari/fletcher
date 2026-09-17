@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CalendarDays, ChevronRight, MoreHorizontal, Trash2, Archive } from "lucide-react";
+import { CalendarDays, ChevronRight, Plus, Trash2, Archive } from "lucide-react";
+import { DotsIcon } from "@/components/fletcher/dots-icon";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtDateYear, relativeDays } from "@/lib/format";
@@ -18,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ProjectStatusBadge } from "@/components/fletcher/status-badge";
 import { ProgressRing } from "@/components/fletcher/progress-ring";
+import { BackButton } from "@/components/fletcher/back-button";
 
 export function ProjectHeader() {
   const { data, isLoading, ws, projectId, trpc } = useProjectData();
@@ -26,6 +28,7 @@ export function ProjectHeader() {
   const invalidate = useInvalidateProject();
   const [dateOpen, setDateOpen] = useState(false);
   const base = `/w/${ws.slug}/projects/${projectId}`;
+  const onTaskPage = pathname.includes("/tasks/");
 
   const archive = useMutation(trpc.projects.archive.mutationOptions({ onSuccess: async () => { await invalidate(); toast.success("Project archived"); router.refresh(); } }));
   const del = useMutation(trpc.projects.delete.mutationOptions({ onSuccess: async () => { await invalidate(); toast.success("Project deleted"); router.push(`/w/${ws.slug}/projects`); router.refresh(); } }));
@@ -41,7 +44,6 @@ export function ProjectHeader() {
   }
   const { project, parent, tasks } = data;
   const done = tasks.filter((t) => t.status === "done").length;
-  const onTaskPage = pathname.includes("/tasks/");
   const tabs = [
     { href: base, label: "Overview", exact: true },
     { href: `${base}/timeline`, label: "Timeline" },
@@ -53,7 +55,9 @@ export function ProjectHeader() {
 
   return (
     <div className="mb-6">
-      <div className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
+      <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <BackButton fallback={onTaskPage ? `/w/${ws.slug}/projects/${projectId}/timeline` : parent ? `/w/${ws.slug}/projects/${parent.id}` : `/w/${ws.slug}/projects`} />
+        <span className="h-4 w-px bg-border" />
         <Link href={`/w/${ws.slug}/projects`} className="hover:text-foreground">Projects</Link>
         {parent && (<><ChevronRight className="size-3" /><Link href={`/w/${ws.slug}/projects/${parent.id}`} className="hover:text-foreground">{parent.name}</Link></>)}
         <ChevronRight className="size-3" />
@@ -85,9 +89,9 @@ export function ProjectHeader() {
             </span>
           </button>
           <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="outline" size="icon" aria-label="More"><MoreHorizontal /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild><Link href={`/w/${ws.slug}/projects/new?parent=${projectId}&type=music_video`}>Add child project</Link></DropdownMenuItem>
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="More"><DotsIcon /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem asChild><Link href={`/w/${ws.slug}/projects/new?parent=${projectId}&type=music_video`}><Plus />Add child project</Link></DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => archive.mutate({ workspace: ws.slug, projectId })}><Archive />Archive</DropdownMenuItem>
               <DropdownMenuItem variant="destructive" onClick={() => { if (confirm(`Delete "${project.name}" and everything in it?`)) del.mutate({ workspace: ws.slug, projectId }); }}><Trash2 />Delete</DropdownMenuItem>

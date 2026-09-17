@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
@@ -9,6 +9,9 @@ import { createProjectWithTemplates } from "./services/project-factory";
 import {
   activityLog,
   comments,
+  commsMomentItems,
+  commsMoments,
+  commsPlans,
   deliverableVersions,
   deliverables,
   projects,
@@ -47,21 +50,21 @@ for (const t of SYSTEM_TEMPLATES) {
 console.log(`system templates: ${SYSTEM_TEMPLATES.length}`);
 
 // 2. Demo workspace (skip if it already exists)
-const existing = await db.query.workspaces.findFirst({ where: eq(workspaces.slug, "demo") });
+const existing = await db.query.workspaces.findFirst({ where: eq(workspaces.slug, "moriah") });
 if (existing) {
-  console.log("demo workspace already exists, skipping demo data");
+  console.log("MŌRIAH workspace already exists, skipping demo data");
   await sql.end();
   process.exit(0);
 }
 
 const [workspace] = await db
   .insert(workspaces)
-  .values({ slug: "demo", name: "Demo Artist", artistName: "Demo Artist", timezone: "America/Chicago" })
+  .values({ slug: "moriah", name: "MŌRIAH", artistName: "MŌRIAH", timezone: "America/Chicago" })
   .returning();
 
 const people: { email: string; name: string; role: MemberRole; permission?: "owner" | "admin" | "member" | "guest"; title?: string; company?: string; isExternal?: boolean }[] = [
   { email: devEmail, name: "You", role: "manager", permission: "owner", title: "Manager", company: "F2 Entertainment" },
-  { email: "artist@fletcher.local", name: "Demo Artist", role: "artist", permission: "admin" },
+  { email: "artist@fletcher.local", name: "MŌRIAH", role: "artist", permission: "admin" },
   { email: "melissa@fletcher.local", name: "Melissa F.", role: "marketing", title: "Client lead", company: "mtheory" },
   { email: "shaneel@fletcher.local", name: "Shaneel Y.", role: "marketing", title: "Marketing associate", company: "mtheory" },
   { email: "maria@fletcher.local", name: "Maria S.", role: "social", title: "Socials" },
@@ -170,7 +173,15 @@ for (const t of videoTasks) {
   await db.update(tasks).set({ status, assigneeMemberId: roleMember ?? null }).where(eq(tasks.id, t.id));
 }
 
-// 4. Video deliverable with a YouTube version and time-coded comments
+// 4. Video deliverables with YouTube versions and time-coded comments
+const YT = {
+  roughCut: "oFNtBPoAnH4",
+  fineCut: "Ze637YupIJE",
+  officialVideo: "MhxkDI1wcLU",
+  teaser: "85YOFUkqwMI",
+};
+const ytUrl = (id: string) => `https://www.youtube.com/watch?v=${id}`;
+
 const roughCutTask = videoTasks.find((t) => t.templateKey === "rough_cut");
 const roughCut = roughCutTask?.deliverableId
   ? await db.query.deliverables.findFirst({ where: eq(deliverables.id, roughCutTask.deliverableId) })
@@ -179,16 +190,7 @@ if (roughCut) {
   await db.update(deliverables).set({ status: "in_review", title: "Rough cut" }).where(eq(deliverables.id, roughCut.id));
   const [v1] = await db
     .insert(deliverableVersions)
-    .values({
-      deliverableId: roughCut.id,
-      versionNumber: 1,
-      sourceType: "youtube",
-      url: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
-      externalId: "aqz-KE-bpKQ",
-      durationSeconds: 634,
-      note: "First assembly. Color is untouched; temp mix.",
-      uploadedByMemberId: memberByRole.videographer,
-    })
+    .values({ deliverableId: roughCut.id, versionNumber: 1, sourceType: "youtube", url: ytUrl(YT.roughCut), externalId: YT.roughCut, note: "First assembly. Color is untouched; temp mix.", uploadedByMemberId: memberByRole.videographer })
     .returning();
   const [c1] = await db
     .insert(comments)
@@ -198,6 +200,43 @@ if (roughCut) {
   await db.insert(comments).values({ versionId: v1!.id, authorMemberId: memberByRole.me, body: "Lip sync drifts here, the chorus lands late by a few frames.", timestampSeconds: 47 });
   await db.insert(comments).values({ versionId: v1!.id, authorMemberId: memberByRole.marketing, body: "This shot is the thumbnail. Grab a still.", timestampSeconds: 92 });
   await db.insert(comments).values({ versionId: v1!.id, authorMemberId: memberByRole.artist, body: "The reveal here is perfect.", timestampSeconds: 150, resolvedAt: new Date(), resolvedByMemberId: memberByRole.videographer });
+  const [v2] = await db
+    .insert(deliverableVersions)
+    .values({ deliverableId: roughCut.id, versionNumber: 2, sourceType: "youtube", url: ytUrl(YT.fineCut), externalId: YT.fineCut, note: "Held the opening wide, fixed the chorus sync, first color pass.", uploadedByMemberId: memberByRole.videographer })
+    .returning();
+  await db.insert(comments).values({ versionId: v2!.id, authorMemberId: memberByRole.artist, body: "Sync is locked now. Color feels a touch warm on the bar interior.", timestampSeconds: 63 });
+}
+
+const officialVideoTask = singleTasks.find((t) => t.templateKey === "video_final");
+if (officialVideoTask?.deliverableId) {
+  await db.update(deliverables).set({ status: "in_review" }).where(eq(deliverables.id, officialVideoTask.deliverableId));
+  await db.insert(deliverableVersions).values({ deliverableId: officialVideoTask.deliverableId, versionNumber: 1, sourceType: "youtube", url: ytUrl(YT.officialVideo), externalId: YT.officialVideo, note: "Lyric video draft while the OMV is in post.", uploadedByMemberId: memberByRole.videographer });
+}
+const teaserTask = singleTasks.find((t) => t.templateKey === "teaser_1");
+if (teaserTask?.deliverableId) {
+  await db.update(deliverables).set({ status: "approved" }).where(eq(deliverables.id, teaserTask.deliverableId));
+  await db.insert(deliverableVersions).values({ deliverableId: teaserTask.deliverableId, versionNumber: 1, sourceType: "youtube", url: ytUrl(YT.teaser), externalId: YT.teaser, note: "15s vertical cut for Reels and TikTok.", uploadedByMemberId: memberByRole.social });
+}
+
+// 4b. Give the dev user and the socials member some open work so the Overview has something to show
+const meTaskKeys = ["pitch_spotify", "presave_link", "crm_drafts", "warmup"];
+for (const t of singleTasks) {
+  if (t.templateKey && meTaskKeys.includes(t.templateKey)) await db.update(tasks).set({ assigneeMemberId: memberByRole.me }).where(eq(tasks.id, t.id));
+}
+const singlePlan = await db.query.commsPlans.findFirst({ where: eq(commsPlans.projectId, single.id) });
+if (singlePlan) {
+  const moments = await db.select().from(commsMoments).where(eq(commsMoments.planId, singlePlan.id));
+  const byKey = new Map(moments.map((m) => [m.templateKey, m.id]));
+  const assign = async (momentKey: string, platforms: string[], memberId: string | undefined) => {
+    const momentId = byKey.get(momentKey);
+    if (!momentId || !memberId) return;
+    const items = await db.select().from(commsMomentItems).where(and(eq(commsMomentItems.momentId, momentId), isNull(commsMomentItems.parentItemId)));
+    for (const it of items) if (platforms.includes(it.platform)) await db.update(commsMomentItems).set({ ownerMemberId: memberId }).where(eq(commsMomentItems.id, it.id));
+  };
+  await assign("announce", ["email", "sms"], memberByRole.me);
+  await assign("teaser_2", ["instagram"], memberByRole.social);
+  await assign("release_day", ["instagram", "tiktok"], memberByRole.social);
+  await assign("release_night", ["spotify", "pandora"], memberByRole.marketing);
 }
 
 // 5. Profile Kit fixtures: one correct upload, one wrong-size upload

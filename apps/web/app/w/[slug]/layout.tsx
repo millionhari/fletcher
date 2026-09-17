@@ -3,6 +3,7 @@ import { TRPCError } from "@trpc/server";
 import { getServerCaller } from "@/lib/trpc/server";
 import { Sidebar } from "@/components/fletcher/sidebar";
 import { WorkspaceProvider } from "@/lib/hooks/use-workspace";
+import { NavDepthTracker } from "@/lib/hooks/use-nav-depth";
 
 export default async function WorkspaceLayout({ children, params }: LayoutProps<"/w/[slug]">) {
   const { slug } = await params;
@@ -18,6 +19,7 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps<
 
   return (
     <WorkspaceProvider value={{ slug, id: data.workspace.id, name: data.workspace.name, artistName: data.workspace.artistName, timezone: data.workspace.timezone, memberId: data.member.id, userName: data.user.name }}>
+      <NavDepthTracker />
       <div className="flex min-h-screen">
         <Sidebar
           workspace={{ slug: data.workspace.slug, name: data.workspace.name, artistName: data.workspace.artistName }}

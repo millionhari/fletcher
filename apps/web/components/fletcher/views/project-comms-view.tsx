@@ -21,6 +21,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { PlatformIcon, PlatformLabel } from "@/components/fletcher/platform-icon";
+import { DotsIcon } from "@/components/fletcher/dots-icon";
 import { MemberAvatar } from "@/components/fletcher/member-avatar";
 import { MomentStatusBadge } from "@/components/fletcher/status-badge";
 import { ProgressBar } from "@/components/fletcher/progress-ring";
@@ -202,8 +203,8 @@ function MomentCard({ moment, today, deliverables, highlighted = false }: { mome
             </Select>
           )}
           <DropdownMenu>
-            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="More">⋯</Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="More"><DotsIcon /></Button></DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
               <DropdownMenuItem onClick={() => setEditing(true)}>Edit details</DropdownMenuItem>
               <DropdownMenuItem onClick={() => setAddingItem({ parentId: null })}><Plus />Add checklist item</DropdownMenuItem>
               <DropdownMenuSeparator />

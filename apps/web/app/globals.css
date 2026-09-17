@@ -172,6 +172,8 @@
     @apply font-sans;
     font-feature-settings: "cv11", "ss01", "ss03";
     -webkit-font-smoothing: antialiased;
+    /* Keep the scrollbar's space reserved so content doesn't jump when a list gets long. */
+    scrollbar-gutter: stable;
   }
   body {
     @apply bg-canvas text-foreground text-[13.5px] leading-5;

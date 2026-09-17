@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Film, Link2, MoreHorizontal, Pin, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Film, Link2, Pin, Sparkles, Trash2, X } from "lucide-react";
+import { DotsIcon } from "@/components/fletcher/dots-icon";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { fmtDate, offsetLabel, relativeDays } from "@/lib/format";
@@ -23,6 +24,7 @@ import { CommentThread } from "@/components/fletcher/comment-thread";
 import { TaskDocEditor } from "@/components/fletcher/task/task-doc-editor";
 import { TaskChecklist } from "@/components/fletcher/task/task-checklist";
 import { TaskAttachments } from "@/components/fletcher/task/task-attachments";
+import { BackButton } from "@/components/fletcher/back-button";
 
 export interface TaskPanelProps {
   taskId: string;
@@ -106,7 +108,7 @@ export function TaskPanel({ taskId, mode, onClose, onNavigate }: TaskPanelProps)
           </>
         ) : (
           <>
-            <Button asChild variant="ghost" size="sm"><Link href={`${base}/timeline`}><ArrowLeft />Timeline</Link></Button>
+            <BackButton fallback={`${base}/timeline`} />
             <span className="flex items-center gap-1.5 truncate text-xs text-muted-foreground"><span className="size-2 rounded-[3px]" style={{ background: project.color }} /><Link href={base} className="hover:text-foreground">{project.name}</Link><span>·</span>{phaseTitle}</span>
             <div className="ml-auto flex items-center gap-1">
               <Button asChild variant="outline" size="sm"><Link href={`${base}/timeline?task=${task.id}`}>Open as panel</Link></Button>
@@ -221,8 +223,8 @@ function DepChip({ t, onClick }: { t: { id: string; title: string; status: "todo
 function TaskMenu({ onDelete, milestone, childProjectId, onCreateChild, wsSlug }: { onDelete: () => void; milestone: { label: string } | null; childProjectId: string | null; onCreateChild: () => void; wsSlug: string }) {
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="More"><MoreHorizontal /></Button></DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-sm" aria-label="More"><DotsIcon /></Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-52">
         {milestone && !childProjectId && <DropdownMenuItem onClick={onCreateChild}><Sparkles />Create {milestone.label} project</DropdownMenuItem>}
         {milestone && childProjectId && <DropdownMenuItem asChild><Link href={`/w/${wsSlug}/projects/${childProjectId}`}>Open {milestone.label}</Link></DropdownMenuItem>}
         {milestone && <DropdownMenuSeparator />}

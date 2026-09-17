@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, CalendarClock, Megaphone, Plus } from "lucide-react";
+import { Megaphone, Plus } from "lucide-react";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspace } from "@/lib/hooks/use-workspace";
 import { fmtDate, fmtTime, pct, relativeDays } from "@/lib/format";
@@ -10,12 +10,10 @@ import { PROJECT_TYPE_LABELS } from "@fletcher/core";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageHeader, SectionHeader } from "@/components/fletcher/page-header";
-import { TaskStatusBadge } from "@/components/fletcher/status-badge";
-import { MemberAvatar } from "@/components/fletcher/member-avatar";
 import { ProgressRing } from "@/components/fletcher/progress-ring";
 import { EmptyState } from "@/components/fletcher/empty-state";
 import { ActivityFeed } from "@/components/fletcher/activity-feed";
-import { cn } from "@/lib/utils";
+import { WorkList } from "@/components/fletcher/work-list";
 
 export function DashboardView() {
   const ws = useWorkspace();
@@ -33,7 +31,6 @@ export function DashboardView() {
     );
   }
 
-  const groupedUpcoming = groupByDate(data.upcoming);
 
   return (
     <div className="stagger">
@@ -80,35 +77,7 @@ export function DashboardView() {
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
         <div className="space-y-8">
-          {data.overdue.length > 0 && (
-            <section>
-              <SectionHeader title={<span className="flex items-center gap-1.5 text-danger"><AlertTriangle className="size-3.5" />Overdue</span>} count={data.overdue.length} />
-              <div className="surface divide-y divide-border">
-                {data.overdue.map((t) => <TaskLine key={t.id} task={t} base={base} overdue />)}
-              </div>
-            </section>
-          )}
-
-          <section>
-            <SectionHeader title={<span className="flex items-center gap-1.5"><CalendarClock className="size-3.5" />Next 30 days</span>} count={data.upcoming.length} actions={<Button asChild variant="ghost" size="xs"><Link href={`${base}/calendar`}>Calendar <ArrowRight /></Link></Button>} />
-            {groupedUpcoming.length === 0 ? (
-              <EmptyState title="Nothing due in the next 30 days" description="Quiet stretch. Check the calendar for what's further out." />
-            ) : (
-              <div className="space-y-4">
-                {groupedUpcoming.map(([date, tasks]) => (
-                  <div key={date}>
-                    <div className="mb-1.5 flex items-baseline gap-2 px-1">
-                      <span className="text-xs font-semibold">{fmtDate(date, "weekday")}</span>
-                      <span className="text-2xs text-muted-foreground">{relativeDays(date)}</span>
-                    </div>
-                    <div className="surface divide-y divide-border">
-                      {tasks.map((t) => <TaskLine key={t.id} task={t} base={base} />)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
+          <WorkList />
         </div>
 
         <div className="space-y-8">
@@ -143,28 +112,5 @@ export function DashboardView() {
   );
 }
 
-type TaskRow = { id: string; title: string; dueDate: string | null; status: "todo" | "in_progress" | "in_review" | "blocked" | "done"; projectId: string; projectName: string; projectColor: string; assigneeName: string | null; phase: string };
 
-function TaskLine({ task, base, overdue }: { task: TaskRow; base: string; overdue?: boolean }) {
-  return (
-    <Link href={`${base}/projects/${task.projectId}/timeline?task=${task.id}`} className="flex items-center gap-3 px-3 py-2 transition-colors hover:bg-muted/60">
-      <span className="size-2 shrink-0 rounded-[3px]" style={{ background: task.projectColor }} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-[13px] font-medium">{task.title}</div>
-        <div className="truncate text-2xs text-muted-foreground">{task.projectName} · {task.phase}</div>
-      </div>
-      <TaskStatusBadge status={task.status} />
-      <span className={cn("tabular w-16 shrink-0 text-right text-xs", overdue ? "font-medium text-danger" : "text-muted-foreground")}>{overdue ? relativeDays(task.dueDate) : fmtDate(task.dueDate)}</span>
-      <MemberAvatar name={task.assigneeName} size="xs" />
-    </Link>
-  );
-}
 
-function groupByDate<T extends { dueDate: string | null }>(rows: T[]): [string, T[]][] {
-  const map = new Map<string, T[]>();
-  for (const r of rows) {
-    const k = r.dueDate ?? "";
-    map.set(k, [...(map.get(k) ?? []), r]);
-  }
-  return [...map.entries()];
-}

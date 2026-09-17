@@ -26,6 +26,7 @@ import { VideoPlayer, type PlayerHandle } from "@/components/fletcher/review/vid
 import { ScrubBar } from "@/components/fletcher/review/scrub-bar";
 import { UploadDropzone, type UploadResult } from "@/components/fletcher/upload-dropzone";
 import { CommentThread } from "@/components/fletcher/comment-thread";
+import { BackButton } from "@/components/fletcher/back-button";
 
 export function ReviewView({ deliverableId }: { deliverableId: string }) {
   const ws = useWorkspace();
@@ -53,7 +54,9 @@ export function ReviewView({ deliverableId }: { deliverableId: string }) {
 
   return (
     <div className="fade-in-up">
-      <div className="mb-2 flex items-center gap-1 text-xs text-muted-foreground">
+      <div className="mb-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <BackButton fallback={project ? `/w/${ws.slug}/projects/${project.id}/deliverables` : `/w/${ws.slug}/projects`} />
+        <span className="h-4 w-px bg-border" />
         <Link href={`/w/${ws.slug}/projects`} className="hover:text-foreground">Projects</Link>
         {project && (<><ChevronRight className="size-3" /><Link href={`/w/${ws.slug}/projects/${project.id}/deliverables`} className="hover:text-foreground">{project.name}</Link></>)}
         <ChevronRight className="size-3" /><span className="text-foreground">{deliverable.title}</span>

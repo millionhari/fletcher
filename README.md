@@ -17,7 +17,7 @@ Release planning, creative review and rollout for artist teams. Replaces the 200
 cp .env.example .env         # set DATABASE_URL (local Postgres or `pnpm db:up` for docker)
 pnpm install
 pnpm db:migrate
-pnpm db:seed                 # system templates + a demo workspace at /w/demo
+pnpm db:seed                 # system templates + the MŌRIAH demo workspace at /w/moriah
 pnpm dev                     # http://localhost:3000
 ```
 
