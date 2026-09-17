@@ -186,40 +186,6 @@
     background: color-mix(in oklab, var(--brand) 22%, transparent);
   }
 
-  /* Everything interactive reads as clickable, app-wide. */
-  button,
-  [role="button"],
-  [role="menuitem"],
-  [role="menuitemcheckbox"],
-  [role="menuitemradio"],
-  [role="option"],
-  [role="tab"],
-  [role="switch"],
-  [role="checkbox"],
-  [role="radio"],
-  [role="combobox"],
-  [role="link"],
-  a[href],
-  label[for],
-  summary,
-  select,
-  input[type="checkbox"],
-  input[type="radio"],
-  input[type="file"],
-  input[type="date"]::-webkit-calendar-picker-indicator,
-  input[type="time"]::-webkit-calendar-picker-indicator {
-    cursor: pointer;
-  }
-  button:disabled,
-  [role="button"][aria-disabled="true"],
-  [data-disabled],
-  [disabled] {
-    cursor: not-allowed;
-  }
-  [draggable="true"]:active {
-    cursor: grabbing;
-  }
-
   /* Hover feedback for primitives that ship without it. */
   [data-slot="checkbox"]:not([data-disabled]):hover,
   [data-slot="radio-group-item"]:not([data-disabled]):hover {
@@ -310,3 +276,38 @@
 .prose-fletcher ul[data-type="taskList"] li > label input:checked { @apply border-primary bg-primary; }
 .prose-fletcher ul[data-type="taskList"] li > div { @apply min-w-0 flex-1; }
 .prose-fletcher ul[data-type="taskList"] li[data-checked="true"] > div { @apply text-muted-foreground line-through; }
+
+/* Unlayered on purpose: must beat shadcn's `cursor-default` utilities on menu and select items. */
+/* Everything interactive reads as clickable, app-wide. */
+button,
+[role="button"],
+[role="menuitem"],
+[role="menuitemcheckbox"],
+[role="menuitemradio"],
+[role="option"],
+[role="tab"],
+[role="switch"],
+[role="checkbox"],
+[role="radio"],
+[role="combobox"],
+[role="link"],
+a[href],
+label[for],
+summary,
+select,
+input[type="checkbox"],
+input[type="radio"],
+input[type="file"],
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+button:disabled,
+[role="button"][aria-disabled="true"],
+[data-disabled],
+[disabled] {
+  cursor: not-allowed;
+}
+[draggable="true"]:active {
+  cursor: grabbing;
+}

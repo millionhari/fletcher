@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, ChevronDown, ChevronRight, FolderKanban, ListTodo, Megaphone, Users } from "lucide-react";
+import { CheckCircle2, ChevronDown, FolderKanban, ListTodo, Megaphone, Users } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtTime, relativeDays } from "@/lib/format";
@@ -19,14 +19,6 @@ import { SectionHeader } from "@/components/fletcher/page-header";
 import { TaskStatusBadge } from "@/components/fletcher/status-badge";
 import { MemberAvatar } from "@/components/fletcher/member-avatar";
 
-type Bucket = "overdue" | "today" | "week" | "later" | "undated";
-const BUCKETS: { key: Bucket; label: string; tone: string }[] = [
-  { key: "overdue", label: "Overdue", tone: "text-danger" },
-  { key: "today", label: "Today", tone: "text-foreground" },
-  { key: "week", label: "This week", tone: "text-foreground" },
-  { key: "later", label: "Later", tone: "text-muted-foreground" },
-  { key: "undated", label: "No date", tone: "text-muted-foreground" },
-];
 
 type Filter = { kind: "mine" } | { kind: "everyone" } | { kind: "member"; id: string; name: string };
 
@@ -43,7 +35,6 @@ export function WorkList() {
   const selectedProject = (projects.data ?? []).find((p) => p.id === projectId) ?? null;
   const memberId = filter.kind === "mine" ? ws.memberId : filter.kind === "member" ? filter.id : null;
   const q = useQuery({ ...trpc.dashboard.workFor.queryOptions({ workspace: ws.slug, memberId, includeDone: showDone }), enabled: hydrated });
-  const [collapsed, setCollapsed] = useState<Record<string, boolean> | null>(null);
   /** Optimistic done-state overrides until the refetch lands. */
   const [pending, setPending] = useState<Record<string, boolean>>({});
   const base = `/w/${ws.slug}`;
@@ -68,7 +59,21 @@ export function WorkList() {
     const open = visible.filter((i) => !i.done);
     return { tasks: open.filter((i) => i.kind === "task").length, items: open.filter((i) => i.kind === "item").length, done: visible.length - open.length, overdue: open.filter((i) => i.bucket === "overdue").length, today: open.filter((i) => i.bucket === "today").length, week: open.filter((i) => i.bucket === "week").length };
   }, [visible]);
-  const groups = useMemo(() => BUCKETS.map((b) => ({ ...b, rows: visible.filter((i) => i.bucket === b.key).sort((a, c) => Number(a.done) - Number(c.done)) })).filter((g) => g.rows.length > 0), [visible]);
+  /** Overdue first, then one group per due date, then undated. Done rows sink to the bottom of their group. */
+  const groups = useMemo(() => {
+    const byDone = (a: { done: boolean }, c: { done: boolean }) => Number(a.done) - Number(c.done);
+    const out: { key: string; label: string; sub?: string; tone: string; overdue?: boolean; rows: typeof visible }[] = [];
+    const overdue = visible.filter((i) => i.bucket === "overdue").sort(byDone);
+    if (overdue.length) out.push({ key: "overdue", label: "Overdue", tone: "text-danger", overdue: true, rows: overdue });
+    const dated = new Map<string, typeof visible>();
+    for (const i of visible) if (i.date && i.bucket !== "overdue") dated.set(i.date, [...(dated.get(i.date) ?? []), i]);
+    for (const [date, rows] of [...dated.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+      out.push({ key: date, label: fmtDate(date, "weekday"), sub: relativeDays(date), tone: date === q.data?.today ? "text-foreground" : "text-muted-foreground", rows: rows.sort(byDone) });
+    }
+    const undated = visible.filter((i) => !i.date).sort(byDone);
+    if (undated.length) out.push({ key: "undated", label: "No date", tone: "text-muted-foreground", rows: undated });
+    return out;
+  }, [visible, q.data?.today]);
 
   const showPerson = filter.kind === "everyone";
   const label = filter.kind === "mine" ? "My work" : filter.kind === "everyone" ? "Everyone's work" : `${filter.name.split(" ")[0]}'s work`;
@@ -138,22 +143,20 @@ export function WorkList() {
             <span>{counts.tasks} tasks · {counts.items} rollout items open</span>
             {counts.done > 0 && <span className="text-success">{counts.done} done</span>}
           </div>
-          <div className="surface overflow-hidden">
+          <div className="space-y-4">
             {groups.map((g) => {
-              const hasNear = counts.overdue + counts.today + counts.week > 0;
-              const isCollapsed = (collapsed ?? { later: hasNear && filter.kind !== "everyone", undated: true })[g.key] ?? false;
               return (
                 <div key={g.key}>
-                  <button onClick={() => setCollapsed({ ...(collapsed ?? {}), [g.key]: !isCollapsed })} className="flex w-full items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-left">
-                    {isCollapsed ? <ChevronRight className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
-                    <span className={cn("text-2xs font-semibold uppercase tracking-wider", g.tone)}>{g.label}</span>
-                    <span className="tabular text-2xs text-muted-foreground">{g.rows.length}</span>
-                  </button>
-                  {!isCollapsed && g.rows.map((row) => {
+                  <div className="mb-1.5 flex items-baseline gap-2 px-1">
+                    <span className={cn("text-xs font-semibold", g.tone, g.overdue && "uppercase tracking-wider")}>{g.label}</span>
+                    {g.sub && <span className="text-2xs text-muted-foreground">{g.sub}</span>}
+                  </div>
+                  <div className="surface divide-y divide-border">
+                  {g.rows.map((row) => {
                     const done = pending[row.id] ?? row.done;
                     const href = row.kind === "task" ? `${base}/projects/${row.projectId}/timeline?task=${row.id}` : `${base}/projects/${row.projectId}/comms#${row.momentId}`;
                     return (
-                      <div key={`${row.kind}-${row.id}`} className={cn("group flex items-center gap-3 border-b border-border px-3 py-1.5 transition-all last:border-0 hover:bg-muted/40", done && "opacity-40")}>
+                      <div key={`${row.kind}-${row.id}`} className={cn("group flex items-center gap-3 px-3 py-1.5 transition-all hover:bg-muted/40", done && "opacity-40")}>
                         <Checkbox checked={done} onCheckedChange={(v) => toggle(row, !!v)} aria-label={done ? "Mark not done" : "Mark done"} />
                         <span className="size-2 shrink-0 rounded-[3px]" style={{ background: row.projectColor }} />
                         <Link href={href} className="min-w-0 flex-1">
@@ -165,13 +168,14 @@ export function WorkList() {
                           </span>
                         </Link>
                         {row.kind === "task" && row.status && <TaskStatusBadge status={done ? "done" : row.status === "done" ? "todo" : row.status} />}
-                        <span className={cn("tabular w-24 shrink-0 text-right text-xs", g.key === "overdue" && !done ? "font-medium text-danger" : "text-muted-foreground")}>
-                          {row.date ? (g.key === "overdue" ? relativeDays(row.date) : `${fmtDate(row.date)}${row.time ? ` · ${fmtTime(row.time)}` : ""}`) : "—"}
+                        <span className={cn("tabular w-24 shrink-0 text-right text-xs", g.overdue && !done ? "font-medium text-danger" : "text-muted-foreground")}>
+                          {row.date ? (g.overdue ? relativeDays(row.date) : row.time ? fmtTime(row.time) : fmtDate(row.date)) : "—"}
                         </span>
                         {showPerson && <MemberAvatar name={row.personName} size="xs" />}
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               );
             })}
