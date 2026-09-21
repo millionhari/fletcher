@@ -107,3 +107,53 @@ export const releaseInfoSchema = z.object({
 });
 export type ReleaseInfo = z.infer<typeof releaseInfoSchema>;
 export type Track = z.infer<typeof trackSchema>;
+
+/**
+ * Where a comment is pinned inside a document or image. Rectangles are normalized
+ * to the content box (0..1 on both axes), so a pin survives zooming, window
+ * resizes and different device pixel ratios — the viewer multiplies by the
+ * rendered size.
+ */
+const normalizedRectSchema = z.object({
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+  w: z.number().min(0).max(1),
+  h: z.number().min(0).max(1),
+});
+
+export const pdfCommentAnchorSchema = z.object({
+  kind: z.literal("pdf"),
+  page: z.number().int().min(1),
+  rect: normalizedRectSchema,
+});
+
+/** Images are a single surface, so there is no page to carry. */
+export const imageCommentAnchorSchema = z.object({
+  kind: z.literal("image"),
+  rect: normalizedRectSchema,
+});
+
+export const commentAnchorSchema = z.discriminatedUnion("kind", [pdfCommentAnchorSchema, imageCommentAnchorSchema]);
+
+export type NormalizedRect = z.infer<typeof normalizedRectSchema>;
+export type PdfCommentAnchor = z.infer<typeof pdfCommentAnchorSchema>;
+export type ImageCommentAnchor = z.infer<typeof imageCommentAnchorSchema>;
+export type CommentAnchor = z.infer<typeof commentAnchorSchema>;
+
+/** Page an anchor lives on; images always sit on the surface's single page. */
+export function anchorPage(anchor: CommentAnchor): number {
+  return anchor.kind === "pdf" ? anchor.page : 1;
+}
+
+/**
+ * Stable per-comment highlight colour. Anchored boxes have to be told apart at a
+ * glance and match their card in the sidebar, so the colour is derived from the
+ * id rather than stored.
+ */
+export const ANCHOR_COLORS = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#dc2626", "#7c3aed", "#db2777", "#0d9488"] as const;
+
+export function anchorColor(commentId: string): string {
+  let h = 0;
+  for (const ch of commentId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return ANCHOR_COLORS[h % ANCHOR_COLORS.length]!;
+}

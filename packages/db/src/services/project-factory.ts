@@ -3,6 +3,7 @@ import {
   commsTemplateDefSchema,
   generateCommsMoments,
   generateTasks,
+  pruneDependencies,
   timelineTemplateDefSchema,
   type CommsTemplateDef,
   type GeneratedMomentItem,
@@ -20,6 +21,13 @@ export interface CreateProjectInput {
   timelineTemplateId?: string | null;
   commsTemplateId?: string | null;
   enabledOptions?: string[];
+  /**
+   * Plan edited on the wizard's review step. Replaces the template's definition
+   * for this project only; the template is still recorded as the source. The
+   * timeline override already has the enabled options baked in.
+   */
+  timelineDefOverride?: TimelineTemplateDef | null;
+  commsDefOverride?: CommsTemplateDef | null;
   parentProjectId?: string | null;
   color?: string;
   releaseInfo?: Record<string, unknown>;
@@ -124,9 +132,11 @@ export async function createProjectWithTemplates(db: Db, input: CreateProjectInp
     ? await db.query.templates.findFirst({ where: eq(templates.id, input.commsTemplateId) })
     : await findDefaultTemplate(db, input.workspaceId, "comms", input.type);
 
-  const timelineDef: TimelineTemplateDef | null = timelineTemplate
-    ? timelineTemplateDefSchema.parse(timelineTemplate.definition)
-    : null;
+  const timelineDef: TimelineTemplateDef | null = input.timelineDefOverride
+    ? { ...input.timelineDefOverride, tasks: pruneDependencies(input.timelineDefOverride.tasks) }
+    : timelineTemplate
+      ? timelineTemplateDefSchema.parse(timelineTemplate.definition)
+      : null;
 
   const [project] = await db
     .insert(projects)
@@ -147,7 +157,7 @@ export async function createProjectWithTemplates(db: Db, input: CreateProjectInp
     .returning();
 
   if (timelineDef) {
-    const generated = generateTasks(timelineDef, input.anchorDate, { enabledOptions: input.enabledOptions });
+    const generated = generateTasks(timelineDef, input.anchorDate, { enabledOptions: input.timelineDefOverride ? [] : input.enabledOptions });
     for (const g of generated) {
       let deliverableId: string | null = null;
       if (g.deliverable) {
@@ -190,9 +200,9 @@ export async function createProjectWithTemplates(db: Db, input: CreateProjectInp
     }
   }
 
-  if (commsTemplate) {
-    const def = commsTemplateDefSchema.parse(commsTemplate.definition) as CommsTemplateDef;
-    await createCommsPlanFromTemplate(db, project!.id, `${input.name} comms plan`, def, input.anchorDate, input.timezone ?? "America/Chicago");
+  const commsDef = input.commsDefOverride ?? (commsTemplate ? (commsTemplateDefSchema.parse(commsTemplate.definition) as CommsTemplateDef) : null);
+  if (commsDef) {
+    await createCommsPlanFromTemplate(db, project!.id, `${input.name} comms plan`, commsDef, input.anchorDate, input.timezone ?? "America/Chicago");
   }
 
   return project!;

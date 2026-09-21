@@ -1,6 +1,6 @@
 import { and, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
-import { commsTemplateDefSchema, PROJECT_TYPES, TEMPLATE_KINDS, timelineTemplateDefSchema } from "@fletcher/core";
+import { blankCommsTemplateDef, blankTimelineTemplateDef, commsTemplateDefSchema, PROJECT_TYPES, TEMPLATE_KINDS, timelineTemplateDefSchema } from "@fletcher/core";
 import { templates } from "@fletcher/db";
 import { TRPCError } from "@trpc/server";
 import { router, workspaceProcedure } from "../trpc";
@@ -28,6 +28,37 @@ export const templatesRouter = router({
     if (!row || (row.workspaceId && row.workspaceId !== ctx.workspace.id)) throw new TRPCError({ code: "NOT_FOUND" });
     return { ...row, isSystem: row.workspaceId === null };
   }),
+
+  create: workspaceProcedure
+    .input(
+      z.object({
+        kind: z.enum(TEMPLATE_KINDS),
+        projectType: z.enum(PROJECT_TYPES),
+        name: z.string().min(1),
+        description: z.string().nullable().optional(),
+        anchorLabel: z.string().min(1).optional(),
+        definition: z.unknown().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const blank = input.kind === "timeline" ? blankTimelineTemplateDef(input.projectType) : blankCommsTemplateDef();
+      const raw = input.definition ?? blank;
+      const parsed = input.kind === "timeline" ? timelineTemplateDefSchema.parse(raw) : commsTemplateDefSchema.parse(raw);
+      const definition = input.kind === "timeline" && input.anchorLabel ? { ...parsed, anchorLabel: input.anchorLabel } : parsed;
+      const [created] = await ctx.db
+        .insert(templates)
+        .values({
+          workspaceId: ctx.workspace.id,
+          kind: input.kind,
+          projectType: input.projectType,
+          name: input.name,
+          description: input.description ?? null,
+          definition,
+          isDefault: false,
+        })
+        .returning();
+      return created!;
+    }),
 
   duplicateToWorkspace: workspaceProcedure
     .input(z.object({ templateId: z.string().uuid(), name: z.string().min(1).optional() }))

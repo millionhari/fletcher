@@ -28,6 +28,22 @@ export function resolveTaskDefs(def: TimelineTemplateDef, enabled: string[] = []
   return tasks;
 }
 
+/**
+ * Bake the enabled options into the task list and drop the options themselves.
+ * The result is a self-contained plan — the starting point for per-project
+ * edits — and dependencies on tasks that no longer exist are pruned so a
+ * removed task can't leave dangling keys behind.
+ */
+export function flattenTimelineDef(def: TimelineTemplateDef, enabled: string[] = []): TimelineTemplateDef {
+  const { options: _options, ...rest } = def;
+  return { ...rest, tasks: pruneDependencies(resolveTaskDefs(def, enabled)) };
+}
+
+export function pruneDependencies(tasks: TimelineTaskDef[]): TimelineTaskDef[] {
+  const keys = new Set(tasks.map((t) => t.key));
+  return tasks.map((t) => (t.dependsOn?.some((k) => !keys.has(k)) ? { ...t, dependsOn: t.dependsOn.filter((k) => keys.has(k)) } : t));
+}
+
 export function computeDueDate(anchor: ISODate, task: TimelineTaskDef): ISODate {
   let due = addDaysISO(anchor, task.offsetDays);
   if (task.snapTo) {

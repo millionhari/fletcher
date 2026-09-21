@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, CheckCircle2, ChevronRight, Clock, CornerDownRight, ExternalLink, MessageSquare, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 import { fmtBytes } from "@/lib/format";
-import { DELIVERABLE_STATUS_LABELS, formatTimestamp, parseVideoLink, type DeliverableStatus } from "@fletcher/core";
+import { anchorColor, anchorPage, DELIVERABLE_STATUS_LABELS, formatTimestamp, parseVideoLink, type CommentAnchor, type DeliverableKind, type DeliverableStatus } from "@fletcher/core";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspace } from "@/lib/hooks/use-workspace";
 import { Button } from "@/components/ui/button";
@@ -25,8 +26,100 @@ import { MemberAvatar } from "@/components/fletcher/member-avatar";
 import { VideoPlayer, type PlayerHandle } from "@/components/fletcher/review/video-player";
 import { ScrubBar } from "@/components/fletcher/review/scrub-bar";
 import { UploadDropzone, type UploadResult } from "@/components/fletcher/upload-dropzone";
-import { CommentThread } from "@/components/fletcher/comment-thread";
+import { CommentThread, readAnchor } from "@/components/fletcher/comment-thread";
+import type { AnnotatedViewerHandle, AnnotationBox } from "@/components/fletcher/review/annotation-surface";
 import { BackButton } from "@/components/fletcher/back-button";
+
+/**
+ * Wording for adding a version, per deliverable kind. A video asks for a YouTube
+ * link; a treatment asks for a PDF. Keeping them in one table stops the empty
+ * state and the dialog drifting apart.
+ */
+const KIND_COPY: Record<DeliverableKind, {
+  empty: string;
+  linkLabel: string;
+  linkPlaceholder: string;
+  notePlaceholder: string;
+  uploadHint: string;
+  accept?: string;
+  defaultMode: "link" | "upload";
+}> = {
+  video: {
+    empty: "Paste a YouTube or Vimeo link, or upload a cut. Each version keeps its own comment thread, with notes pinned to a timecode.",
+    linkLabel: "YouTube, Vimeo or direct video URL",
+    linkPlaceholder: "https://youtu.be/… or https://vimeo.com/…",
+    notePlaceholder: "What changed in this cut?",
+    uploadHint: "MP4 or MOV. Duration and dimensions are read from the file.",
+    accept: "video/*",
+    defaultMode: "link",
+  },
+  image: {
+    empty: "Upload a JPG, PNG or GIF, or paste a direct link. Each version keeps its own comment thread, with notes pinned to a region of the image.",
+    linkLabel: "Direct image URL",
+    linkPlaceholder: "https://…/artwork.png",
+    notePlaceholder: "What changed in this version?",
+    uploadHint: "JPG, PNG, GIF or WebP. Dimensions are read from the file.",
+    accept: "image/*",
+    defaultMode: "upload",
+  },
+  document: {
+    empty: "Upload a PDF, or paste a link to a Google Doc. PDFs open in the viewer, with notes pinned to a region of the page.",
+    linkLabel: "Google Doc, Notion or direct PDF URL",
+    linkPlaceholder: "https://docs.google.com/… or https://…/treatment.pdf",
+    notePlaceholder: "What changed in this draft?",
+    uploadHint: "PDF opens in the annotating viewer; other formats get a download link.",
+    defaultMode: "upload",
+  },
+  audio: {
+    empty: "Upload a WAV or MP3, or paste a direct link. Each version keeps its own comment thread.",
+    linkLabel: "Direct audio URL",
+    linkPlaceholder: "https://…/master.wav",
+    notePlaceholder: "What changed in this mix?",
+    uploadHint: "WAV or MP3, played back inline.",
+    accept: "audio/*",
+    defaultMode: "upload",
+  },
+  link: {
+    empty: "Paste the URL you want tracked and reviewed. Each version keeps its own comment thread.",
+    linkLabel: "URL",
+    linkPlaceholder: "https://…",
+    notePlaceholder: "What changed?",
+    uploadHint: "Any file you want versioned alongside the link.",
+    defaultMode: "link",
+  },
+};
+
+/** pdfjs touches `window` and DOMMatrix at import time, so never render it on the server. */
+const PdfViewer = dynamic(() => import("@/components/fletcher/review/pdf-viewer").then((m) => m.PdfViewer), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[520px] rounded-xl" />,
+});
+
+const ImageViewer = dynamic(() => import("@/components/fletcher/review/image-viewer").then((m) => m.ImageViewer), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[520px] rounded-xl" />,
+});
+
+/**
+ * Shared by the PDF and image reviewers: turn comment rows into drawable boxes.
+ * Boxes are numbered in reading order (page, then down the page) and the rail
+ * shows the same number, so a marker on the document and a card in the list
+ * refer to each other by something you can actually say out loud.
+ */
+function useAnnotationBoxes(list: { id: string; anchor?: unknown; parentCommentId: string | null; resolvedAt: Date | null }[]): AnnotationBox[] {
+  return useMemo(
+    () =>
+      list
+        .filter((c) => !c.parentCommentId)
+        .flatMap((c) => {
+          const a = readAnchor(c.anchor);
+          return a ? [{ id: c.id, page: anchorPage(a), rect: a.rect, color: anchorColor(c.id), resolved: !!c.resolvedAt }] : [];
+        })
+        .sort((x, y) => x.page - y.page || x.rect.y - y.rect.y)
+        .map((b, i) => ({ ...b, index: i + 1 })),
+    [list],
+  );
+}
 
 export function ReviewView({ deliverableId }: { deliverableId: string }) {
   const ws = useWorkspace();
@@ -51,6 +144,7 @@ export function ReviewView({ deliverableId }: { deliverableId: string }) {
   const { deliverable, project, task, spec } = q.data;
   const isVideo = deliverable.kind === "video" || (active?.mimeType?.startsWith("video/") ?? false);
   const isImage = deliverable.kind === "image" || (active?.mimeType?.startsWith("image/") ?? false);
+  const isPdf = (active?.mimeType === "application/pdf") || (active?.fileName?.toLowerCase().endsWith(".pdf") ?? false);
 
   return (
     <div className="fade-in-up">
@@ -83,7 +177,7 @@ export function ReviewView({ deliverableId }: { deliverableId: string }) {
         <div className="surface flex flex-col items-center justify-center gap-3 py-16 text-center">
           <Upload className="size-6 text-muted-foreground" />
           <div className="text-sm font-medium">No versions yet</div>
-          <p className="max-w-sm text-xs text-muted-foreground">Paste a YouTube or Vimeo link, or upload a file. Each version keeps its own comment thread.</p>
+          <p className="max-w-sm text-xs text-muted-foreground">{KIND_COPY[deliverable.kind].empty}</p>
           <Button size="sm" onClick={() => setAddOpen(true)}><Plus />Add first version</Button>
         </div>
       ) : (
@@ -108,8 +202,10 @@ export function ReviewView({ deliverableId }: { deliverableId: string }) {
             </div>
             {active && (isVideo && active.sourceType !== "upload" || (active.mimeType?.startsWith("video/") ?? false) || (active.sourceType === "url" && isVideo)) ? (
               <VersionReview key={active.id} version={active} deliverableId={deliverableId} invalidate={invalidate} />
+            ) : active && isPdf && (active.publicUrl ?? active.url) ? (
+              <PdfReview key={active.id} version={active} invalidate={invalidate} />
             ) : active && isImage ? (
-              <ImageReview key={active.id} version={active} deliverableId={deliverableId} invalidate={invalidate} />
+              <ImageReview key={active.id} version={active} invalidate={invalidate} />
             ) : active ? (
               <FileReview key={active.id} version={active} deliverableId={deliverableId} invalidate={invalidate} />
             ) : null}
@@ -168,18 +264,125 @@ function VersionReview({ version, deliverableId, invalidate }: { version: any; d
   );
 }
 
-function ImageReview({ version, deliverableId, invalidate }: { version: any; deliverableId: string; invalidate: () => Promise<void> }) {
+/**
+ * Image review: the same annotation surface as the PDF, minus paging. Works for
+ * jpg/png/gif/webp alike.
+ */
+function ImageReview({ version, invalidate }: { version: MediaVersion; invalidate: () => Promise<void> }) {
   const ws = useWorkspace();
   const trpc = useTRPC();
   const comments = useQuery(trpc.comments.listByVersion.queryOptions({ workspace: ws.slug, versionId: version.id }));
+  const list = useMemo(() => comments.data ?? [], [comments.data]);
+  const boxes = useAnnotationBoxes(list);
+  const [draft, setDraft] = useState<CommentAnchor | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const viewerRef = useRef<AnnotatedViewerHandle>(null);
+
+  const selectBox = (id: string) => {
+    setActiveId(id);
+    document.getElementById(`c-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const url = version.publicUrl ?? version.url;
+  if (!url) return null;
+
   return (
     <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
-      <div className="surface flex min-h-[320px] items-center justify-center overflow-hidden bg-[radial-gradient(circle_at_1px_1px,var(--border)_1px,transparent_0)] bg-[size:16px_16px] p-6">
-        {version.publicUrl ? <img src={version.publicUrl} alt={version.fileName ?? "asset"} className="max-h-[70vh] max-w-full rounded-lg shadow-float" /> : <span className="text-xs text-muted-foreground">No preview</span>}
+      <div className="min-w-0">
+        <ImageViewer
+          ref={viewerRef}
+          url={url}
+          alt={version.fileName ?? "asset"}
+          boxes={boxes}
+          activeId={activeId}
+          draft={draft ? { page: 1, rect: draft.rect } : null}
+          onHoverBox={setActiveId}
+          onSelectBox={selectBox}
+          onDraft={(d) => setDraft(d ? { kind: "image", rect: d.rect } : null)}
+        />
+        {version.note && <p className="mt-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">{version.uploaderName ?? "Uploader"}:</span> {version.note}</p>}
       </div>
-      <CommentThread target={{ versionId: version.id }} comments={comments.data ?? []} invalidate={invalidate} timeCoded={false} />
+      <CommentThread
+        target={{ versionId: version.id }}
+        comments={list}
+        activeId={activeId}
+        draftAnchor={draft}
+        onClearDraftAnchor={() => setDraft(null)}
+        onHoverComment={setActiveId}
+        onSelectComment={(a, id) => { setActiveId(id); viewerRef.current?.revealAnchor(1, a.rect); }}
+        anchorIndex={indexById(boxes)}
+        invalidate={invalidate}
+        timeCoded={false}
+      />
     </div>
   );
+}
+
+/**
+ * PDF review: page canvas on the left, comment rail on the right. A comment is
+ * pinned by dragging a box over the page; hovering a card lights its box up, and
+ * clicking the page pill pages the document to it.
+ */
+type MediaVersion = { id: string; publicUrl?: string | null; url?: string | null; fileName?: string | null; note?: string | null; uploaderName?: string | null };
+
+function PdfReview({ version, invalidate }: { version: MediaVersion; invalidate: () => Promise<void> }) {
+  const ws = useWorkspace();
+  const trpc = useTRPC();
+  const viewerRef = useRef<AnnotatedViewerHandle>(null);
+  const comments = useQuery(trpc.comments.listByVersion.queryOptions({ workspace: ws.slug, versionId: version.id }));
+  const list = useMemo(() => comments.data ?? [], [comments.data]);
+  const [draft, setDraft] = useState<CommentAnchor | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const boxes = useAnnotationBoxes(list);
+
+  // Clicking a box scrolls its card into view; clicking a card pages the document.
+  const selectBox = (id: string) => {
+    setActiveId(id);
+    document.getElementById(`c-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+  const selectComment = (a: CommentAnchor, id: string) => {
+    setActiveId(id);
+    viewerRef.current?.revealAnchor(anchorPage(a), a.rect);
+  };
+
+  const url = version.publicUrl ?? version.url;
+  if (!url) return null;
+
+  return (
+    <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <div className="min-w-0">
+        <PdfViewer
+          ref={viewerRef}
+          url={url}
+          boxes={boxes}
+          activeId={activeId}
+          draft={draft ? { page: anchorPage(draft), rect: draft.rect } : null}
+          onHoverBox={setActiveId}
+          onSelectBox={selectBox}
+          onDraft={(d) => setDraft(d ? { kind: "pdf", page: d.page, rect: d.rect } : null)}
+        />
+        {version.note && <p className="mt-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">{version.uploaderName ?? "Uploader"}:</span> {version.note}</p>}
+      </div>
+      <CommentThread
+        target={{ versionId: version.id }}
+        comments={list}
+        activeId={activeId}
+        draftAnchor={draft}
+        onClearDraftAnchor={() => setDraft(null)}
+        onHoverComment={setActiveId}
+        onSelectComment={selectComment}
+        anchorIndex={indexById(boxes)}
+        invalidate={invalidate}
+        timeCoded={false}
+      />
+    </div>
+  );
+}
+
+/** Comment id → marker number, so the rail can label cards like the document. */
+function indexById(boxes: AnnotationBox[]): Map<string, number> {
+  return new Map(boxes.map((b) => [b.id, b.index]));
 }
 
 function FileReview({ version, deliverableId, invalidate }: { version: any; deliverableId: string; invalidate: () => Promise<void> }) {
@@ -200,10 +403,11 @@ function FileReview({ version, deliverableId, invalidate }: { version: any; deli
   );
 }
 
-function AddVersionDialog({ open, onOpenChange, deliverableId, kind, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; deliverableId: string; kind: string; onDone: (v: { id: string }) => Promise<void> }) {
+function AddVersionDialog({ open, onOpenChange, deliverableId, kind, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; deliverableId: string; kind: DeliverableKind; onDone: (v: { id: string }) => Promise<void> }) {
   const ws = useWorkspace();
   const trpc = useTRPC();
-  const [mode, setMode] = useState<"link" | "upload">(kind === "video" ? "link" : "upload");
+  const copy = KIND_COPY[kind];
+  const [mode, setMode] = useState<"link" | "upload">(copy.defaultMode);
   const [link, setLink] = useState("");
   const [note, setNote] = useState("");
   const [upload, setUpload] = useState<UploadResult | null>(null);
@@ -222,16 +426,16 @@ function AddVersionDialog({ open, onOpenChange, deliverableId, kind, onDone }: {
         </Tabs>
         {mode === "link" ? (
           <div className="grid gap-1.5">
-            <Label>YouTube, Vimeo or direct file URL</Label>
-            <Input autoFocus value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://youtu.be/… or https://vimeo.com/…" />
-            {parsed && <p className="text-2xs text-muted-foreground">Detected: <span className="font-medium capitalize text-foreground">{parsed.source}</span>{parsed.externalId ? ` · ${parsed.externalId}` : ""}</p>}
+            <Label>{copy.linkLabel}</Label>
+            <Input autoFocus value={link} onChange={(e) => setLink(e.target.value)} placeholder={copy.linkPlaceholder} />
+            {parsed && parsed.source !== "url" && <p className="text-2xs text-muted-foreground">Detected: <span className="font-medium capitalize text-foreground">{parsed.source}</span>{parsed.externalId ? ` · ${parsed.externalId}` : ""}</p>}
           </div>
         ) : (
-          <UploadDropzone folder={`deliverables/${deliverableId}`} accept={kind === "video" ? "video/*" : kind === "image" ? "image/*" : kind === "audio" ? "audio/*" : undefined} onUploaded={setUpload} value={upload} />
+          <UploadDropzone folder={`deliverables/${deliverableId}`} accept={copy.accept} hint={copy.uploadHint} onUploaded={setUpload} value={upload} />
         )}
         <div className="grid gap-1.5">
           <Label>Note (optional)</Label>
-          <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What changed in this cut?" />
+          <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder={copy.notePlaceholder} />
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>

@@ -15,6 +15,13 @@
       "when": 1789631943400,
       "tag": "0001_puzzling_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790014818224,
+      "tag": "0002_blushing_ronan",
+      "breakpoints": true
     }
   ]
 }

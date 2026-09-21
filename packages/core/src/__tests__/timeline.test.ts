@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateTasks, reshiftTasks, validateTimeline } from "../timeline/engine";
+import { flattenTimelineDef, generateTasks, pruneDependencies, reshiftTasks, validateTimeline } from "../timeline/engine";
 import { SINGLE_RELEASE_TIMELINE } from "../templates/single-release";
 import { ALBUM_RELEASE_TIMELINE } from "../templates/album-release";
 import { snapToWeekday } from "../dates";
@@ -101,5 +101,24 @@ describe("validateTimeline", () => {
       "2026-02-01",
     );
     expect(warnings[0]?.message).toContain("Overdue");
+  });
+});
+
+describe("flattenTimelineDef", () => {
+  it("bakes enabled options into the tasks so it generates the same plan with no options", () => {
+    const optionKeys = (ALBUM_RELEASE_TIMELINE.options ?? []).map((o) => o.key);
+    const flat = flattenTimelineDef(ALBUM_RELEASE_TIMELINE, optionKeys);
+    expect(flat.options).toBeUndefined();
+    expect(generateTasks(flat, R)).toEqual(generateTasks(ALBUM_RELEASE_TIMELINE, R, { enabledOptions: optionKeys }));
+  });
+});
+
+describe("pruneDependencies", () => {
+  it("drops dependencies on tasks that were removed", () => {
+    const withDeps = SINGLE_RELEASE_TIMELINE.tasks.find((t) => t.dependsOn?.length);
+    expect(withDeps).toBeDefined();
+    const removed = withDeps!.dependsOn![0]!;
+    const pruned = pruneDependencies(SINGLE_RELEASE_TIMELINE.tasks.filter((t) => t.key !== removed));
+    expect(pruned.find((t) => t.key === withDeps!.key)?.dependsOn).not.toContain(removed);
   });
 });

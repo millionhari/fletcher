@@ -1,17 +1,29 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { Copy, Lock, Star } from "lucide-react";
+import { Copy, Lock, Plus, Star } from "lucide-react";
 import { toast } from "sonner";
-import { PROJECT_TYPES, PROJECT_TYPE_LABELS } from "@fletcher/core";
+import { cn } from "@/lib/utils";
+import { DEFAULT_ANCHOR_LABELS, PROJECT_TYPES, PROJECT_TYPE_LABELS, TEMPLATE_KINDS, type ProjectType, type TemplateKind } from "@fletcher/core";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspace } from "@/lib/hooks/use-workspace";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PageHeader, SectionHeader } from "@/components/fletcher/page-header";
 import { Pill } from "@/components/fletcher/status-badge";
+
+const KIND_BLURB: Record<TemplateKind, string> = {
+  timeline: "Dated tasks with roles, durations and checklists, scheduled backward from one anchor date.",
+  comms: "Rollout moments — the posts, emails and drops that go out around the release.",
+};
 
 export function TemplatesListView() {
   const ws = useWorkspace();
@@ -22,10 +34,16 @@ export function TemplatesListView() {
   const invalidate = () => qc.invalidateQueries({ queryKey: trpc.templates.list.queryKey() });
   const duplicate = useMutation(trpc.templates.duplicateToWorkspace.mutationOptions({ onSuccess: async (t) => { await invalidate(); toast.success("Copied to your workspace"); router.push(`/w/${ws.slug}/templates/${t.id}`); }, onError: (e) => toast.error(e.message) }));
   const setDefault = useMutation(trpc.templates.setDefault.mutationOptions({ onSuccess: async () => { await invalidate(); toast.success("Set as default"); }, onError: (e) => toast.error(e.message) }));
+  const [newOpen, setNewOpen] = useState(false);
 
   return (
     <div className="fade-in-up">
-      <PageHeader title="Templates" description="Every project starts from a timeline template (dated tasks) and a comms template (rollout moments). System templates carry the industry defaults; copy one to change offsets, roles or checklists for this artist." />
+      <PageHeader
+        title="Templates"
+        description="Every project starts from a timeline template (dated tasks) and a comms template (rollout moments). System templates carry the industry defaults; copy one to change offsets, roles or checklists for this artist, or build your own from scratch."
+        actions={<Button size="sm" onClick={() => setNewOpen(true)}><Plus />New template</Button>}
+      />
+      <NewTemplateDialog open={newOpen} onOpenChange={setNewOpen} />
       {q.isLoading || !q.data ? (
         <Skeleton className="h-96 rounded-xl" />
       ) : (
@@ -68,5 +86,92 @@ export function TemplatesListView() {
         </div>
       )}
     </div>
+  );
+}
+
+function NewTemplateDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  const ws = useWorkspace();
+  const trpc = useTRPC();
+  const qc = useQueryClient();
+  const router = useRouter();
+  const [kind, setKind] = useState<TemplateKind>("timeline");
+  const [projectType, setProjectType] = useState<ProjectType>("single");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  // Tracks whether the anchor label was typed by hand, so switching project
+  // type keeps re-deriving the default until the user overrides it.
+  const [anchorLabel, setAnchorLabel] = useState<string | null>(null);
+  const effectiveAnchor = anchorLabel ?? DEFAULT_ANCHOR_LABELS[projectType];
+
+  const reset = () => { setKind("timeline"); setProjectType("single"); setName(""); setDescription(""); setAnchorLabel(null); };
+  const create = useMutation(
+    trpc.templates.create.mutationOptions({
+      onSuccess: async (t) => {
+        await qc.invalidateQueries({ queryKey: trpc.templates.list.queryKey() });
+        toast.success(`${t.name} created`, { description: "Add your tasks and save." });
+        onOpenChange(false);
+        reset();
+        router.push(`/w/${ws.slug}/templates/${t.id}`);
+      },
+      onError: (e) => toast.error(e.message),
+    }),
+  );
+
+  const valid = name.trim().length > 0 && (kind === "comms" || effectiveAnchor.trim().length > 0);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New template</DialogTitle>
+          <DialogDescription>Starts empty. You pick the shape here, then build the tasks or moments in the editor.</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4">
+          <div className="grid gap-1.5">
+            <Label>Kind</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {TEMPLATE_KINDS.map((k) => (
+                <button key={k} type="button" onClick={() => setKind(k)} className={cn("surface p-3 text-left transition-all hover:shadow-float", kind === k && "ring-2 ring-brand")}>
+                  <span className="block text-sm font-semibold">{k === "timeline" ? "Timeline" : "Comms"}</span>
+                  <span className="mt-0.5 block text-2xs text-muted-foreground">{KIND_BLURB[k]}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="tpl-type">Project type</Label>
+            <Select value={projectType} onValueChange={(v) => setProjectType(v as ProjectType)}>
+              <SelectTrigger id="tpl-type" size="sm"><SelectValue /></SelectTrigger>
+              <SelectContent>{PROJECT_TYPES.map((t) => <SelectItem key={t} value={t}>{PROJECT_TYPE_LABELS[t]}</SelectItem>)}</SelectContent>
+            </Select>
+            <p className="text-2xs text-muted-foreground">Projects of this type will offer the template in the new-project wizard.</p>
+          </div>
+          <div className="grid gap-1.5">
+            <Label htmlFor="tpl-name">Name</Label>
+            <Input id="tpl-name" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "timeline" ? "e.g. Indie single, no radio" : "e.g. Short-form heavy rollout"} />
+          </div>
+          {kind === "timeline" && (
+            <div className="grid gap-1.5">
+              <Label htmlFor="tpl-anchor">Anchor label</Label>
+              <Input id="tpl-anchor" value={effectiveAnchor} onChange={(e) => setAnchorLabel(e.target.value)} className="w-56" />
+              <p className="text-2xs text-muted-foreground">The one date the project is built around. Every task offset counts from it.</p>
+            </div>
+          )}
+          <div className="grid gap-1.5">
+            <Label htmlFor="tpl-desc">Description <span className="font-normal text-muted-foreground">· optional</span></Label>
+            <Textarea id="tpl-desc" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this template is for, and when to reach for it." />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            disabled={!valid || create.isPending}
+            onClick={() => create.mutate({ workspace: ws.slug, kind, projectType, name: name.trim(), description: description.trim() || null, anchorLabel: kind === "timeline" ? effectiveAnchor.trim() : undefined })}
+          >
+            {create.isPending ? "Creating…" : "Create template"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

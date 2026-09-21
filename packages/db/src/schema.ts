@@ -235,6 +235,8 @@ export const comments = pgTable(
     authorMemberId: uuid("author_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),
     body: text("body").notNull(),
     timestampSeconds: real("timestamp_seconds"),
+    /** Region pin for document review — see commentAnchorSchema in @fletcher/core. */
+    anchor: jsonb("anchor"),
     parentCommentId: uuid("parent_comment_id"),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolvedByMemberId: uuid("resolved_by_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),

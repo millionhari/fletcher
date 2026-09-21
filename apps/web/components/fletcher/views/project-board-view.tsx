@@ -61,15 +61,15 @@ export function ProjectBoardView() {
   };
 
   return (
-    <div className="fade-in-up scrollbar-thin -mx-8 overflow-x-auto px-8 pb-4">
-      <div className="flex min-w-max gap-3">
+    <div className="fade-in-up scrollbar-thin ml-[calc(50%-50cqw)] w-[100cqw] overflow-x-auto px-8 pb-4">
+      <div className="flex min-w-max justify-center gap-3">
         {columns.map((col) => (
           <div
             key={col.status}
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (over !== col.status) setOver(col.status); }}
             onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setOver((o) => (o === col.status ? null : o)); }}
             onDrop={(e) => { e.preventDefault(); drop(col.status); }}
-            className={cn("flex w-[272px] shrink-0 flex-col rounded-xl bg-muted/60 p-2 transition-colors", over === col.status && dragging && "bg-brand-soft ring-2 ring-brand/40")}
+            className={cn("flex min-w-[320px] max-w-[340px] flex-1 flex-col rounded-xl bg-muted/60 p-2 transition-colors", over === col.status && dragging && "bg-brand-soft ring-2 ring-brand/40")}
           >
             <div className="mb-2 flex items-center gap-2 px-1.5 py-1">
               <span className={cn("size-2 rounded-full", COLUMN_TONE[col.status])} />
@@ -93,13 +93,13 @@ export function ProjectBoardView() {
                       <span className="min-w-0 flex-1 text-[13px] font-medium leading-4">{t.title}</span>
                       {t.deliverableId && <Link href={`/w/${ws.slug}/deliverables/${t.deliverableId}`} onClick={(e) => e.stopPropagation()} className="text-brand" aria-label="Open review" draggable={false}><Film className="size-3.5" /></Link>}
                     </div>
-                    <div className="flex items-center justify-between gap-2" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex shrink-0 items-center gap-1.5">
                         <StatusSelect taskId={t.id} status={t.status} />
                         <RolePill role={t.roleKey} />
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className={cn("tabular text-2xs", overdue ? "font-medium text-danger" : "text-muted-foreground")}>{t.dueDate ? `${fmtDate(t.dueDate)} · ${relativeDays(t.dueDate)}` : "no date"}</span>
+                      <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                        <span className={cn("tabular whitespace-nowrap text-2xs", overdue ? "font-medium text-danger" : "text-muted-foreground")}>{t.dueDate ? `${fmtDate(t.dueDate)} · ${relativeDays(t.dueDate)}` : "no date"}</span>
                         <AssigneePicker taskId={t.id} assigneeMemberId={t.assigneeMemberId} assigneeName={t.assigneeName} roleKey={t.roleKey} />
                       </div>
                     </div>

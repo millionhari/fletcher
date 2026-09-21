@@ -45,7 +45,9 @@ export async function uploadFile(file: File, folder: string): Promise<UploadResu
   return (await res.json()) as UploadResult;
 }
 
-export function UploadDropzone({ folder, accept, onUploaded, value, compact, className }: { folder: string; accept?: string; onUploaded: (r: UploadResult | null) => void; value?: UploadResult | null; compact?: boolean; className?: string }) {
+export function UploadDropzone({ folder, accept, hint, onUploaded, value, compact, className }: { folder: string; accept?: string;
+  /** Line under the prompt; callers pass something specific to what they accept. */
+  hint?: string; onUploaded: (r: UploadResult | null) => void; value?: UploadResult | null; compact?: boolean; className?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [drag, setDrag] = useState(false);
@@ -66,13 +68,13 @@ export function UploadDropzone({ folder, accept, onUploaded, value, compact, cla
 
   if (value) {
     return (
-      <div className={cn("flex items-center gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2", className)}>
-        <CheckCircle2 className="size-4 text-success" />
+      <div className={cn("flex min-w-0 items-center gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2", className)}>
+        <CheckCircle2 className="size-4 shrink-0 text-success" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-xs font-medium">{value.fileName}</div>
-          <div className="text-2xs text-muted-foreground">{fmtBytes(value.bytes)}{value.width && value.height ? ` · ${value.width}×${value.height}` : ""}{value.durationSeconds ? ` · ${Math.round(value.durationSeconds)}s` : ""}</div>
+          <div className="truncate text-2xs text-muted-foreground">{fmtBytes(value.bytes)}{value.width && value.height ? ` · ${value.width}×${value.height}` : ""}{value.durationSeconds ? ` · ${Math.round(value.durationSeconds)}s` : ""}</div>
         </div>
-        <button onClick={() => onUploaded(null)} className="text-muted-foreground hover:text-foreground" aria-label="Remove"><X className="size-4" /></button>
+        <button onClick={() => onUploaded(null)} className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="Remove"><X className="size-4" /></button>
       </div>
     );
   }
@@ -88,7 +90,7 @@ export function UploadDropzone({ folder, accept, onUploaded, value, compact, cla
       <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={(e) => void handle(e.target.files?.[0])} />
       <UploadCloud className={cn("text-muted-foreground", compact ? "size-4" : "size-5")} />
       <div className="text-xs font-medium">{busy ? "Uploading…" : "Drop a file or click to browse"}</div>
-      {!compact && <div className="text-2xs text-muted-foreground">Stored locally for now. Videos read their own duration and size.</div>}
+      {!compact && <div className="text-2xs text-muted-foreground">{hint ?? "Stored locally for now."}</div>}
       {error && <div className="text-2xs text-danger">{error}</div>}
     </div>
   );

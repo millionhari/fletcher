@@ -33,7 +33,8 @@ export interface TaskPanelProps {
   onNavigate?: (taskId: string) => void;
 }
 
-/** The task detail: header, doc, checklist, attachments, properties, comments, activity. */
+/** The task detail: header, doc, checklist, attachments and comments in the main
+ *  column; properties, dependencies and activity in the side rail. */
 export function TaskPanel({ taskId, mode, onClose, onNavigate }: TaskPanelProps) {
   const ws = useWorkspace();
   const trpc = useTRPC();
@@ -142,9 +143,7 @@ export function TaskPanel({ taskId, mode, onClose, onNavigate }: TaskPanelProps)
 
           <TaskAttachments taskId={task.id} projectId={project.id} attachments={attachments} onChanged={invalidate} />
 
-          <div className="xl:hidden">
-            <CommentThread target={{ taskId: task.id }} comments={comments.data ?? []} invalidate={invalidate} timeCoded={false} className="max-h-[520px]" />
-          </div>
+          <CommentThread target={{ taskId: task.id }} comments={comments.data ?? []} invalidate={invalidate} timeCoded={false} variant="inline" />
         </div>
 
         {/* Side column */}
@@ -185,10 +184,6 @@ export function TaskPanel({ taskId, mode, onClose, onNavigate }: TaskPanelProps)
               )}
             </section>
           )}
-
-          <section className="hidden xl:block">
-            <CommentThread target={{ taskId: task.id }} comments={comments.data ?? []} invalidate={invalidate} timeCoded={false} className="max-h-[460px]" />
-          </section>
 
           <section>
             <div className="mb-2 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Activity</div>

@@ -8,6 +8,8 @@ import { TOUR_ANNOUNCE_TIMELINE } from "./tour-announce";
 import { SINGLE_RELEASE_COMMS } from "./comms-single";
 import { ALBUM_ANNOUNCE_COMMS } from "./comms-album";
 
+export * from "./blank";
+
 export interface SystemTemplate {
   key: string;
   kind: TemplateKind;

@@ -95,7 +95,9 @@ export function NewProjectWizard({ parentProjectId, initialType }: { parentProje
 
   return (
     <div className="fade-in-up mx-auto max-w-4xl">
-      <PageHeader eyebrow={parentProjectId ? "Child project" : "New project"} title={step === 0 ? "What are you planning?" : step === 1 ? "Name it and pick the date" : "Review the generated plan"} description={step === 0 ? "Pick a type. Each one ships with an industry-standard timeline and comms plan you can customize." : step === 1 ? "Everything is scheduled backward from this date. You can move it later and the plan re-flows." : "These tasks and rollout moments will be created. Edit any of them after."} />
+      <div key={`h${step}`} className="fade-in-up">
+        <PageHeader eyebrow={parentProjectId ? "Child project" : "New project"} title={step === 0 ? "What are you planning?" : step === 1 ? "Name it and pick the date" : "Review the generated plan"} description={step === 0 ? "Pick a type. Each one ships with an industry-standard timeline and comms plan you can customize." : step === 1 ? "Everything is scheduled backward from this date. You can move it later and the plan re-flows." : "These tasks and rollout moments will be created. Edit any of them after."} />
+      </div>
 
       <div className="mb-6 flex items-center gap-2 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
         {["Type", "Details", "Review"].map((s, i) => (
@@ -107,96 +109,98 @@ export function NewProjectWizard({ parentProjectId, initialType }: { parentProje
         ))}
       </div>
 
-      {step === 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {TYPES.map((t) => (
-            <button key={t.type} onClick={() => pickType(t.type)} className={cn("surface group flex flex-col items-start gap-3 p-4 text-left transition-all hover:shadow-float", type === t.type && "ring-2 ring-brand")}>
-              <span className={cn("flex size-9 items-center justify-center rounded-lg bg-muted text-foreground transition-colors", type === t.type && "bg-brand-soft text-brand")}><t.icon className="size-4" /></span>
-              <span>
-                <span className="block text-sm font-semibold">{PROJECT_TYPE_LABELS[t.type]}</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">{t.blurb}</span>
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      <div key={step} className="fade-in-up">
+        {step === 0 && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {TYPES.map((t) => (
+              <button key={t.type} onClick={() => pickType(t.type)} className={cn("surface group flex flex-col items-start gap-3 p-4 text-left transition-all hover:shadow-float", type === t.type && "ring-2 ring-brand")}>
+                <span className={cn("flex size-9 items-center justify-center rounded-lg bg-muted text-foreground transition-colors", type === t.type && "bg-brand-soft text-brand")}><t.icon className="size-4" /></span>
+                <span>
+                  <span className="block text-sm font-semibold">{PROJECT_TYPE_LABELS[t.type]}</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">{t.blurb}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
 
-      {step === 1 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
-          <div className="surface space-y-5 p-5">
-            <div className="grid gap-1.5">
-              <Label htmlFor="name">Project name</Label>
-              <Input id="name" autoFocus placeholder={type === "single" ? "Song title" : type === "album" ? "Album title" : "Name"} value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="date">{timelineDef?.anchorLabel ?? "Date"}</Label>
-              <Input id="date" type="date" value={anchorDate} onChange={(e) => setAnchorDate(e.target.value)} className="w-56 tabular" />
-              <p className="text-2xs text-muted-foreground">{type === "single" || type === "album" || type === "ep" ? "Releases land on Fridays (global release day)." : type === "tour" ? "Announces usually go out on a Monday; on-sale lands the Friday after." : ""}</p>
-            </div>
-            {timelineDef?.options && timelineDef.options.length > 0 && (
-              <div className="grid gap-2">
-                <Label>Options</Label>
-                {timelineDef.options.map((o) => (
-                  <label key={o.key} className="flex items-start gap-2.5 rounded-lg border border-border p-3">
-                    <Checkbox checked={enabledOptions.includes(o.key)} onCheckedChange={(v) => setEnabledOptions((prev) => (v ? [...prev, o.key] : prev.filter((k) => k !== o.key)))} />
-                    <span>
-                      <span className="block text-sm font-medium">{o.label}</span>
-                      {o.description && <span className="block text-xs text-muted-foreground">{o.description}</span>}
-                    </span>
-                  </label>
-                ))}
+        {step === 1 && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_300px]">
+            <div className="surface space-y-5 p-5">
+              <div className="grid gap-1.5">
+                <Label htmlFor="name">Project name</Label>
+                <Input id="name" autoFocus placeholder={type === "single" ? "Song title" : type === "album" ? "Album title" : "Name"} value={name} onChange={(e) => setName(e.target.value)} />
               </div>
-            )}
-          </div>
-          <div className="space-y-4">
-            <TemplatePicker label="Timeline template" items={timelineTemplates} value={chosenTimeline?.id ?? null} onChange={setTimelineTemplateId} />
-            <TemplatePicker label="Comms template" items={commsTemplates} value={chosenComms?.id ?? null} onChange={setCommsTemplateId} allowNone />
-          </div>
-        </div>
-      )}
-
-      {step === 2 && (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
-          <div className="surface overflow-hidden">
-            <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-              <span className="text-xs font-semibold">{name}</span>
-              <span className="tabular text-xs text-muted-foreground">{preview.length} tasks · {timelineDef?.anchorLabel} {fmtDate(anchorDate, "weekday")}</span>
-            </div>
-            <div className="scrollbar-thin max-h-[520px] overflow-y-auto">
-              {phases.map((ph) => {
-                const rows = preview.filter((t) => t.phase === ph.key);
-                if (!rows.length) return null;
-                return (
-                  <div key={ph.key}>
-                    <div className="sticky top-0 bg-muted/80 px-4 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground backdrop-blur">{ph.title}</div>
-                    {rows.map((t) => (
-                      <div key={t.key} className="flex items-center gap-3 border-b border-border px-4 py-1.5 last:border-0">
-                        <span className="tabular w-14 shrink-0 font-mono text-2xs text-muted-foreground">{offsetLabel(t.dueDate, anchorDate)}</span>
-                        <span className="min-w-0 flex-1 truncate text-[13px]">{t.title}</span>
-                        <RolePill role={t.roleKey} />
-                        <span className="tabular w-16 shrink-0 text-right text-xs text-muted-foreground">{fmtDate(t.dueDate)}</span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          <div className="surface self-start overflow-hidden">
-            <div className="border-b border-border px-4 py-2.5 text-xs font-semibold">Rollout moments</div>
-            {momentsPreview.length === 0 ? (
-              <p className="px-4 py-3 text-xs text-muted-foreground">No comms template for this type.</p>
-            ) : (
-              momentsPreview.map((m) => (
-                <div key={m.key} className="flex items-center gap-3 border-b border-border px-4 py-1.5 last:border-0">
-                  <span className="tabular w-12 shrink-0 text-xs text-muted-foreground">{fmtDate(m.scheduledDate)}</span>
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{m.title}</span>
+              <div className="grid gap-1.5">
+                <Label htmlFor="date">{timelineDef?.anchorLabel ?? "Date"}</Label>
+                <Input id="date" type="date" value={anchorDate} onChange={(e) => setAnchorDate(e.target.value)} className="w-56 tabular" />
+                <p className="text-2xs text-muted-foreground">{type === "single" || type === "album" || type === "ep" ? "Releases land on Fridays (global release day)." : type === "tour" ? "Announces usually go out on a Monday; on-sale lands the Friday after." : ""}</p>
+              </div>
+              {timelineDef?.options && timelineDef.options.length > 0 && (
+                <div className="grid gap-2">
+                  <Label>Options</Label>
+                  {timelineDef.options.map((o) => (
+                    <label key={o.key} className="flex items-start gap-2.5 rounded-lg border border-border p-3">
+                      <Checkbox checked={enabledOptions.includes(o.key)} onCheckedChange={(v) => setEnabledOptions((prev) => (v ? [...prev, o.key] : prev.filter((k) => k !== o.key)))} />
+                      <span>
+                        <span className="block text-sm font-medium">{o.label}</span>
+                        {o.description && <span className="block text-xs text-muted-foreground">{o.description}</span>}
+                      </span>
+                    </label>
+                  ))}
                 </div>
-              ))
-            )}
+              )}
+            </div>
+            <div className="space-y-4">
+              <TemplatePicker label="Timeline template" items={timelineTemplates} value={chosenTimeline?.id ?? null} onChange={setTimelineTemplateId} />
+              <TemplatePicker label="Comms template" items={commsTemplates} value={chosenComms?.id ?? null} onChange={setCommsTemplateId} allowNone />
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {step === 2 && (
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_320px]">
+            <div className="surface overflow-hidden">
+              <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                <span className="text-xs font-semibold">{name}</span>
+                <span className="tabular text-xs text-muted-foreground">{preview.length} tasks · {timelineDef?.anchorLabel} {fmtDate(anchorDate, "weekday")}</span>
+              </div>
+              <div className="scrollbar-thin max-h-[520px] overflow-y-auto">
+                {phases.map((ph) => {
+                  const rows = preview.filter((t) => t.phase === ph.key);
+                  if (!rows.length) return null;
+                  return (
+                    <div key={ph.key}>
+                      <div className="sticky top-0 bg-muted/80 px-4 py-1 text-2xs font-semibold uppercase tracking-wider text-muted-foreground backdrop-blur">{ph.title}</div>
+                      {rows.map((t) => (
+                        <div key={t.key} className="flex items-center gap-3 border-b border-border px-4 py-1.5 last:border-0">
+                          <span className="tabular w-14 shrink-0 font-mono text-2xs text-muted-foreground">{offsetLabel(t.dueDate, anchorDate)}</span>
+                          <span className="min-w-0 flex-1 truncate text-[13px]">{t.title}</span>
+                          <RolePill role={t.roleKey} />
+                          <span className="tabular w-16 shrink-0 text-right text-xs text-muted-foreground">{fmtDate(t.dueDate)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="surface self-start overflow-hidden">
+              <div className="border-b border-border px-4 py-2.5 text-xs font-semibold">Rollout moments</div>
+              {momentsPreview.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-muted-foreground">No comms template for this type.</p>
+              ) : (
+                momentsPreview.map((m) => (
+                  <div key={m.key} className="flex items-center gap-3 border-b border-border px-4 py-1.5 last:border-0">
+                    <span className="tabular w-12 shrink-0 text-xs text-muted-foreground">{fmtDate(m.scheduledDate)}</span>
+                    <span className="min-w-0 flex-1 truncate text-[13px]">{m.title}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="mt-6 flex items-center justify-between">
         <Button variant="ghost" size="sm" onClick={() => (step === 0 ? goBack() : setStep(step - 1))}><ArrowLeft />{step === 0 ? "Cancel" : "Back"}</Button>

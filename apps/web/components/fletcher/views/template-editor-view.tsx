@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Copy, Lock, Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronRight, ChevronUp, Copy, Lock, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { MEMBER_ROLES, MEMBER_ROLE_LABELS, PLATFORMS, PLATFORM_LABELS, commsTemplateDefSchema, timelineTemplateDefSchema, type CommsTemplateDef, type TimelineTaskDef, type TimelineTemplateDef, type MemberRole, type Platform } from "@fletcher/core";
@@ -13,6 +13,7 @@ import { useWorkspace } from "@/lib/hooks/use-workspace";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
@@ -44,7 +45,7 @@ export function TemplateEditorView({ templateId }: { templateId: string }) {
       <div className="mb-6 flex items-start justify-between gap-6">
         <div>
           <div className="flex items-center gap-2"><h1 className="text-xl font-semibold leading-7">{t.name}</h1><Pill tone={t.kind === "timeline" ? "info" : "brand"} dot={false}>{t.kind === "timeline" ? "Timeline" : "Comms"}</Pill>{readOnly && <Pill tone="neutral" dot={false}><Lock className="size-2.5" />System · read-only</Pill>}</div>
-          <p className="mt-1 max-w-2xl text-muted-foreground">{t.description}</p>
+          {readOnly && <p className="mt-1 max-w-2xl text-muted-foreground">{t.description}</p>}
         </div>
         <div className="flex shrink-0 gap-2">
           {readOnly ? (
@@ -55,18 +56,45 @@ export function TemplateEditorView({ templateId }: { templateId: string }) {
         </div>
       </div>
       {t.kind === "timeline" ? (
-        <TimelineEditor key={t.updatedAt.toString()} initial={timelineTemplateDefSchema.parse(t.definition)} name={t.name} readOnly={readOnly} saving={save.isPending} onSave={(def, name) => save.mutate({ workspace: ws.slug, templateId, definition: def, name })} />
+        <TimelineEditor key={t.updatedAt.toString()} initial={timelineTemplateDefSchema.parse(t.definition)} name={t.name} description={t.description} readOnly={readOnly} saving={save.isPending} onSave={(def, name, description) => save.mutate({ workspace: ws.slug, templateId, definition: def, name, description })} />
       ) : (
-        <CommsEditor key={t.updatedAt.toString()} initial={commsTemplateDefSchema.parse(t.definition) as CommsTemplateDef} name={t.name} readOnly={readOnly} saving={save.isPending} onSave={(def, name) => save.mutate({ workspace: ws.slug, templateId, definition: def, name })} />
+        <CommsEditor key={t.updatedAt.toString()} initial={commsTemplateDefSchema.parse(t.definition) as CommsTemplateDef} name={t.name} description={t.description} readOnly={readOnly} saving={save.isPending} onSave={(def, name, description) => save.mutate({ workspace: ws.slug, templateId, definition: def, name, description })} />
       )}
     </div>
   );
 }
 
-function TimelineEditor({ initial, name: initialName, readOnly, saving, onSave }: { initial: TimelineTemplateDef; name: string; readOnly: boolean; saving: boolean; onSave: (def: TimelineTemplateDef, name: string) => void }) {
+/**
+ * Offsets are routinely negative — most template tasks land before the anchor
+ * date. A native number input reports "" while the value is only "-", so a
+ * plain Number(e.target.value) handler collapses it to 0 and the minus can
+ * never be typed. Holding the raw text until it parses fixes that; on blur the
+ * field snaps back to whatever last committed.
+ */
+function OffsetInput({ value, disabled, onChange, className, ariaLabel }: { value: number; disabled?: boolean; onChange: (n: number) => void; className?: string; ariaLabel: string }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      aria-label={ariaLabel}
+      disabled={disabled}
+      value={draft ?? String(value)}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        if (/^-?\d+$/.test(e.target.value)) onChange(Number(e.target.value));
+      }}
+      onBlur={() => setDraft(null)}
+      className={className}
+    />
+  );
+}
+
+function TimelineEditor({ initial, name: initialName, description: initialDesc, readOnly, saving, onSave }: { initial: TimelineTemplateDef; name: string; description: string | null; readOnly: boolean; saving: boolean; onSave: (def: TimelineTemplateDef, name: string, description: string | null) => void }) {
   const [def, setDef] = useState(initial);
   const [name, setName] = useState(initialName);
-  const dirty = useMemo(() => JSON.stringify(def) !== JSON.stringify(initial) || name !== initialName, [def, initial, name, initialName]);
+  const [desc, setDesc] = useState(initialDesc ?? "");
+  const dirty = useMemo(() => JSON.stringify(def) !== JSON.stringify(initial) || name !== initialName || desc !== (initialDesc ?? ""), [def, initial, name, initialName, desc, initialDesc]);
   useEffect(() => {
     const h = (e: BeforeUnloadEvent) => { if (dirty) e.preventDefault(); };
     window.addEventListener("beforeunload", h);
@@ -78,28 +106,67 @@ function TimelineEditor({ initial, name: initialName, readOnly, saving, onSave }
   const removeTask = (i: number) => setDef({ ...def, tasks: def.tasks.filter((_, j) => j !== i) });
   const byPhase = def.phases.map((p) => ({ phase: p, rows: def.tasks.map((t, i) => ({ t, i })).filter((x) => x.t.phase === p.key).sort((a, b) => a.t.offsetDays - b.t.offsetDays) }));
 
+  // Phase keys are referenced by every task's `phase`, so they stay fixed once
+  // minted — only the title is editable, and a phase holding tasks can't be removed.
+  const addPhase = () => setDef({ ...def, phases: [...def.phases, { key: `phase_${Date.now().toString(36)}`, title: "New phase" }] });
+  const setPhaseTitle = (i: number, title: string) => setDef({ ...def, phases: def.phases.map((p, j) => (j === i ? { ...p, title } : p)) });
+  const removePhase = (i: number) => setDef({ ...def, phases: def.phases.filter((_, j) => j !== i) });
+  const movePhase = (i: number, dir: -1 | 1) => {
+    const j = i + dir;
+    if (j < 0 || j >= def.phases.length) return;
+    const next = [...def.phases];
+    [next[i], next[j]] = [next[j]!, next[i]!];
+    setDef({ ...def, phases: next });
+  };
+
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          {!readOnly && <Input value={name} onChange={(e) => setName(e.target.value)} className="w-72" />}
-          <span className="text-xs text-muted-foreground">Anchor: <span className="font-medium text-foreground">{def.anchorLabel}</span> · offsets in days (negative = before)</span>
+      {readOnly ? (
+        <div className="mb-4 text-xs text-muted-foreground">Anchor: <span className="font-medium text-foreground">{def.anchorLabel}</span> · offsets in days (negative = before)</div>
+      ) : (
+        <div className="surface mb-4 flex items-start justify-between gap-4 p-4">
+          <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[1fr_220px]">
+            <div className="grid gap-1.5">
+              <Label htmlFor="tpl-name" className="text-2xs uppercase tracking-wider text-muted-foreground">Name</Label>
+              <Input id="tpl-name" value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="tpl-anchor" className="text-2xs uppercase tracking-wider text-muted-foreground">Anchor label</Label>
+              <Input id="tpl-anchor" value={def.anchorLabel} onChange={(e) => setDef({ ...def, anchorLabel: e.target.value })} />
+            </div>
+            <div className="grid gap-1.5 sm:col-span-2">
+              <Label htmlFor="tpl-desc" className="text-2xs uppercase tracking-wider text-muted-foreground">Description</Label>
+              <Textarea id="tpl-desc" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What this template is for, and when to reach for it." className="text-xs" />
+              <p className="text-2xs text-muted-foreground">Offsets are in days from the anchor — negative is before.</p>
+            </div>
+          </div>
+          <Button size="sm" disabled={!dirty || saving} onClick={() => onSave(def, name, desc.trim() || null)}>{saving ? "Saving…" : dirty ? "Save changes" : "Saved"}</Button>
         </div>
-        {!readOnly && <Button size="sm" disabled={!dirty || saving} onClick={() => onSave(def, name)}>{saving ? "Saving…" : dirty ? "Save changes" : "Saved"}</Button>}
-      </div>
+      )}
       <div className="surface overflow-hidden">
         <div className="grid grid-cols-[72px_1fr_160px_70px_70px_90px_60px_32px] items-center gap-2 border-b border-border bg-muted/50 px-3 py-1.5 text-2xs font-semibold uppercase tracking-wider text-muted-foreground">
           <span>Offset</span><span>Task</span><span>Role</span><span>Duration</span><span>Snap</span><span>Deliverable</span><span>Checklist</span><span />
         </div>
-        {byPhase.map(({ phase, rows }) => (
+        {byPhase.map(({ phase, rows }, pi) => (
           <div key={phase.key}>
-            <div className="flex items-center justify-between border-b border-border bg-muted/30 px-3 py-1">
-              <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{phase.title}</span>
-              {!readOnly && <Button variant="ghost" size="xs" onClick={() => addTask(phase.key)}><Plus />Task</Button>}
+            <div className="flex items-center justify-between gap-2 border-b border-border bg-muted/30 px-3 py-1">
+              {readOnly ? (
+                <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">{phase.title}</span>
+              ) : (
+                <Input value={phase.title} onChange={(e) => setPhaseTitle(pi, e.target.value)} aria-label="Phase name" className="h-6 w-56 border-transparent bg-transparent px-1 text-2xs font-semibold uppercase tracking-wider shadow-none hover:border-border focus-visible:border-border" />
+              )}
+              {!readOnly && (
+                <div className="flex items-center gap-0.5">
+                  <Button variant="ghost" size="icon-xs" aria-label="Move phase up" disabled={pi === 0} onClick={() => movePhase(pi, -1)}><ChevronUp /></Button>
+                  <Button variant="ghost" size="icon-xs" aria-label="Move phase down" disabled={pi === def.phases.length - 1} onClick={() => movePhase(pi, 1)}><ChevronDown /></Button>
+                  <Button variant="ghost" size="icon-xs" aria-label="Remove phase" disabled={rows.length > 0} title={rows.length > 0 ? "Remove or move its tasks first" : "Remove phase"} onClick={() => removePhase(pi)}><Trash2 /></Button>
+                  <Button variant="ghost" size="xs" onClick={() => addTask(phase.key)}><Plus />Task</Button>
+                </div>
+              )}
             </div>
             {rows.map(({ t, i }) => (
               <div key={t.key} className="grid grid-cols-[72px_1fr_160px_70px_70px_90px_60px_32px] items-center gap-2 border-b border-border px-3 py-1 last:border-0">
-                <Input type="number" disabled={readOnly} value={t.offsetDays} onChange={(e) => setTask(i, { offsetDays: Number(e.target.value) })} className="tabular h-7 font-mono text-xs" />
+                <OffsetInput ariaLabel="Offset in days" disabled={readOnly} value={t.offsetDays} onChange={(n) => setTask(i, { offsetDays: n })} className="tabular h-7 font-mono text-xs" />
                 <div className="min-w-0">
                   <Input disabled={readOnly} value={t.title} onChange={(e) => setTask(i, { title: e.target.value })} className="h-7 text-xs" />
                   {t.dependsOn && t.dependsOn.length > 0 && <div className="mt-0.5 truncate px-1 text-2xs text-muted-foreground">after: {t.dependsOn.join(", ")}</div>}
@@ -118,8 +185,17 @@ function TimelineEditor({ initial, name: initialName, readOnly, saving, onSave }
                 {!readOnly ? <Button variant="ghost" size="icon-xs" aria-label="Remove" onClick={() => removeTask(i)}><Trash2 /></Button> : <span />}
               </div>
             ))}
+            {rows.length === 0 && <div className="border-b border-border px-3 py-2 text-2xs text-muted-foreground last:border-0">No tasks in this phase yet.</div>}
           </div>
         ))}
+        {def.phases.length === 0 && (
+          <div className="px-3 py-6 text-center text-xs text-muted-foreground">No phases yet. Phases group the tasks — add one to get started.</div>
+        )}
+        {!readOnly && (
+          <div className="border-t border-border px-3 py-1.5">
+            <Button variant="ghost" size="xs" onClick={addPhase}><Plus />Phase</Button>
+          </div>
+        )}
       </div>
       {def.options && def.options.length > 0 && (
         <div className="mt-4 text-xs text-muted-foreground">Options: {def.options.map((o) => o.label).join(", ")} (edited in JSON for now).</div>
@@ -128,10 +204,11 @@ function TimelineEditor({ initial, name: initialName, readOnly, saving, onSave }
   );
 }
 
-function CommsEditor({ initial, name: initialName, readOnly, saving, onSave }: { initial: CommsTemplateDef; name: string; readOnly: boolean; saving: boolean; onSave: (def: CommsTemplateDef, name: string) => void }) {
+function CommsEditor({ initial, name: initialName, description: initialDesc, readOnly, saving, onSave }: { initial: CommsTemplateDef; name: string; description: string | null; readOnly: boolean; saving: boolean; onSave: (def: CommsTemplateDef, name: string, description: string | null) => void }) {
   const [def, setDef] = useState(initial);
   const [name, setName] = useState(initialName);
-  const dirty = useMemo(() => JSON.stringify(def) !== JSON.stringify(initial) || name !== initialName, [def, initial, name, initialName]);
+  const [desc, setDesc] = useState(initialDesc ?? "");
+  const dirty = useMemo(() => JSON.stringify(def) !== JSON.stringify(initial) || name !== initialName || desc !== (initialDesc ?? ""), [def, initial, name, initialName, desc, initialDesc]);
   const setMoment = (i: number, patch: Partial<CommsTemplateDef["moments"][number]>) => setDef({ ...def, moments: def.moments.map((m, j) => (j === i ? { ...m, ...patch } : m)) });
   const addItem = (i: number) => setMoment(i, { items: [...def.moments[i]!.items, { platform: "instagram", title: "New item" }] });
   const setItem = (i: number, k: number, patch: { platform?: Platform; title?: string }) => setMoment(i, { items: def.moments[i]!.items.map((it, j) => (j === k ? { ...it, ...patch } : it)) });
@@ -139,21 +216,35 @@ function CommsEditor({ initial, name: initialName, readOnly, saving, onSave }: {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          {!readOnly && <Input value={name} onChange={(e) => setName(e.target.value)} className="w-72" />}
-          <span className="text-xs text-muted-foreground">Offsets relative to the release / announce date. Sub-items are edited on the project once created.</span>
+      {readOnly ? (
+        <div className="mb-4 text-xs text-muted-foreground">Offsets relative to the release / announce date. Sub-items are edited on the project once created.</div>
+      ) : (
+        <div className="surface mb-4 flex items-start justify-between gap-4 p-4">
+          <div className="grid min-w-0 flex-1 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="tpl-name" className="text-2xs uppercase tracking-wider text-muted-foreground">Name</Label>
+              <Input id="tpl-name" value={name} onChange={(e) => setName(e.target.value)} className="max-w-md" />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="tpl-desc" className="text-2xs uppercase tracking-wider text-muted-foreground">Description</Label>
+              <Textarea id="tpl-desc" rows={2} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="What this rollout plan is for, and when to reach for it." className="text-xs" />
+              <p className="text-2xs text-muted-foreground">Offsets are relative to the release / announce date. Sub-items are edited on the project once created.</p>
+            </div>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button variant="outline" size="sm" onClick={() => setDef({ ...def, moments: [...def.moments, { key: `m_${Date.now().toString(36)}`, title: "New moment", offsetDays: 0, time: "12:00", items: [] }] })}><Plus />Moment</Button>
+            <Button size="sm" disabled={!dirty || saving} onClick={() => onSave(def, name, desc.trim() || null)}>{saving ? "Saving…" : dirty ? "Save changes" : "Saved"}</Button>
+          </div>
         </div>
-        <div className="flex gap-2">
-          {!readOnly && <Button variant="outline" size="sm" onClick={() => setDef({ ...def, moments: [...def.moments, { key: `m_${Date.now().toString(36)}`, title: "New moment", offsetDays: 0, time: "12:00", items: [] }] })}><Plus />Moment</Button>}
-          {!readOnly && <Button size="sm" disabled={!dirty || saving} onClick={() => onSave(def, name)}>{saving ? "Saving…" : dirty ? "Save changes" : "Saved"}</Button>}
-        </div>
-      </div>
+      )}
       <div className="space-y-3">
+        {def.moments.length === 0 && (
+          <div className="surface px-3 py-8 text-center text-xs text-muted-foreground">No moments yet. Add one for each post, email or drop in the rollout.</div>
+        )}
         {def.moments.map((m, i) => (
           <div key={m.key} className="surface p-4">
             <div className="grid grid-cols-[80px_90px_1fr_1fr_32px] items-center gap-2">
-              <Input type="number" disabled={readOnly} value={m.offsetDays} onChange={(e) => setMoment(i, { offsetDays: Number(e.target.value) })} className="tabular h-7 font-mono text-xs" />
+              <OffsetInput ariaLabel="Offset in days" disabled={readOnly} value={m.offsetDays} onChange={(n) => setMoment(i, { offsetDays: n })} className="tabular h-7 font-mono text-xs" />
               <Input type="time" disabled={readOnly} value={m.time ?? ""} onChange={(e) => setMoment(i, { time: e.target.value || undefined })} className="tabular h-7 text-xs" />
               <Input disabled={readOnly} value={m.title} onChange={(e) => setMoment(i, { title: e.target.value })} className="h-7 text-xs font-medium" />
               <Input disabled={readOnly} value={m.cta ?? ""} placeholder="CTA" onChange={(e) => setMoment(i, { cta: e.target.value || undefined })} className="h-7 text-xs" />

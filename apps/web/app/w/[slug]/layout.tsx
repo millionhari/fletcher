@@ -27,7 +27,7 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps<
           projects={projects.map((p) => ({ id: p.id, name: p.name, type: p.type, color: p.color, anchorDate: p.anchorDate, parentProjectId: p.parentProjectId }))}
           userName={data.user.name}
         />
-        <main className="min-w-0 flex-1">
+        <main className="@container/main min-w-0 flex-1">
           <div className="mx-auto max-w-[1280px] px-8 py-6">{children}</div>
         </main>
       </div>

@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import {
   addDaysISO,
+  commsTemplateDefSchema,
   diffDaysISO,
   PROJECT_STATUSES,
   PROJECT_TYPES,
@@ -10,6 +11,7 @@ import {
   timelineTemplateDefSchema,
   todayISO,
   validateTimeline,
+  type CommsTemplateDef,
 } from "@fletcher/core";
 import {
   activityLog,
@@ -154,6 +156,9 @@ export const projectsRouter = router({
         timelineTemplateId: z.string().uuid().nullable().optional(),
         commsTemplateId: z.string().uuid().nullable().optional(),
         enabledOptions: z.array(z.string()).default([]),
+        // The plan as edited on the review step; absent means "use the template as-is".
+        timelineDef: timelineTemplateDefSchema.optional(),
+        commsDef: commsTemplateDefSchema.optional(),
         parentProjectId: z.string().uuid().nullable().optional(),
         releaseInfo: releaseInfoSchema.optional(),
       }),
@@ -167,6 +172,8 @@ export const projectsRouter = router({
         timelineTemplateId: input.timelineTemplateId ?? undefined,
         commsTemplateId: input.commsTemplateId ?? undefined,
         enabledOptions: input.enabledOptions,
+        timelineDefOverride: input.timelineDef ?? null,
+        commsDefOverride: (input.commsDef as CommsTemplateDef | undefined) ?? null,
         parentProjectId: input.parentProjectId ?? null,
         releaseInfo: input.releaseInfo,
         timezone: ctx.workspace.timezone,

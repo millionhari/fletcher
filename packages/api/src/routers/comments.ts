@@ -1,5 +1,6 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { anchorPage, commentAnchorSchema } from "@fletcher/core";
 import { activityLog, comments, deliverableVersions, deliverables, projects, tasks, users, workspaceMembers } from "@fletcher/db";
 import type { Db } from "@fletcher/db";
 import { TRPCError } from "@trpc/server";
@@ -47,7 +48,7 @@ export const commentsRouter = router({
   add: workspaceProcedure
     .input(
       z
-        .object({ versionId: z.string().uuid().optional(), taskId: z.string().uuid().optional(), body: z.string().min(1), timestampSeconds: z.number().nonnegative().nullable().optional(), parentCommentId: z.string().uuid().nullable().optional() })
+        .object({ versionId: z.string().uuid().optional(), taskId: z.string().uuid().optional(), body: z.string().min(1), timestampSeconds: z.number().nonnegative().nullable().optional(), anchor: commentAnchorSchema.nullable().optional(), parentCommentId: z.string().uuid().nullable().optional() })
         .refine((v) => !!v.versionId !== !!v.taskId, { message: "Provide exactly one of versionId or taskId" }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -63,14 +64,14 @@ export const commentsRouter = router({
       const { deliverable } = await loadVersion(ctx, input.versionId!);
       const [c] = await ctx.db
         .insert(comments)
-        .values({ versionId: input.versionId!, authorMemberId: ctx.member.id, body: input.body, timestampSeconds: input.timestampSeconds ?? null, parentCommentId: input.parentCommentId ?? null })
+        .values({ versionId: input.versionId!, authorMemberId: ctx.member.id, body: input.body, timestampSeconds: input.timestampSeconds ?? null, anchor: input.anchor ?? null, parentCommentId: input.parentCommentId ?? null })
         .returning();
       await ctx.db.insert(activityLog).values({
         workspaceId: ctx.workspace.id,
         projectId: deliverable.projectId,
         actorMemberId: ctx.member.id,
         type: "comment.added",
-        payload: { title: deliverable.title, timestamp: input.timestampSeconds ?? null, deliverableId: deliverable.id },
+        payload: { title: deliverable.title, timestamp: input.timestampSeconds ?? null, page: input.anchor ? anchorPage(input.anchor) : null, deliverableId: deliverable.id },
       });
       return c!;
     }),
