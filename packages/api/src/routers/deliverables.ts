@@ -1,4 +1,4 @@
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
   ASSET_SPEC_BY_KEY,
@@ -8,11 +8,12 @@ import {
   parseVideoLink,
   specsForScope,
 } from "@fletcher/core";
-import { activityLog, deliverableVersions, deliverables, projects, tasks, users, workspaceMembers } from "@fletcher/db";
+import { activityLog, deliverableVersions, deliverables, importJobs, projects, tasks, users, workspaceFiles, workspaceMembers } from "@fletcher/db";
 import type { Db } from "@fletcher/db";
 import { TRPCError } from "@trpc/server";
 import { router, workspaceProcedure } from "../trpc";
 import { storage } from "../storage";
+import { deleteStoredFile, loadReadyFile } from "../files";
 
 async function loadDeliverable(ctx: { db: Db; workspace: { id: string } }, id: string) {
   const row = await ctx.db.query.deliverables.findFirst({ where: and(eq(deliverables.id, id), eq(deliverables.workspaceId, ctx.workspace.id)) });
@@ -20,15 +21,8 @@ async function loadDeliverable(ctx: { db: Db; workspace: { id: string } }, id: s
   return row as typeof deliverables.$inferSelect;
 }
 
-const uploadMeta = z.object({
-  storageKey: z.string().min(1),
-  fileName: z.string().min(1),
-  mimeType: z.string().min(1),
-  bytes: z.number().int().nonnegative(),
-  width: z.number().int().positive().nullable().optional(),
-  height: z.number().int().positive().nullable().optional(),
-  durationSeconds: z.number().nonnegative().nullable().optional(),
-});
+/** A finished upload, by its workspace_files row. Every size/type field comes from the server, not the client. */
+const uploadMeta = z.object({ fileId: z.string().uuid() });
 
 export const deliverablesRouter = router({
   get: workspaceProcedure.input(z.object({ deliverableId: z.string().uuid() })).query(async ({ ctx, input }) => {
@@ -40,6 +34,13 @@ export const deliverablesRouter = router({
       .leftJoin(users, eq(workspaceMembers.userId, users.id))
       .where(eq(deliverableVersions.deliverableId, d.id))
       .orderBy(desc(deliverableVersions.versionNumber));
+    // Import progress for versions still being copied in.
+    const fileIds = versions.map((v) => v.version.fileId).filter((x): x is string => !!x);
+    const fileRows = fileIds.length ? await ctx.db.select({ id: workspaceFiles.id, status: workspaceFiles.status }).from(workspaceFiles).where(inArray(workspaceFiles.id, fileIds)) : [];
+    const jobRows = fileIds.length ? await ctx.db.select({ fileId: importJobs.fileId, progressBytes: importJobs.progressBytes, totalBytes: importJobs.totalBytes, error: importJobs.error, status: importJobs.status }).from(importJobs).where(inArray(importJobs.fileId, fileIds)).orderBy(desc(importJobs.createdAt)) : [];
+    const fileById = new Map(fileRows.map((f) => [f.id, f]));
+    const jobByFile = new Map<string, (typeof jobRows)[number]>();
+    for (const j of jobRows) if (!jobByFile.has(j.fileId)) jobByFile.set(j.fileId, j);
     const project = d.projectId ? await ctx.db.query.projects.findFirst({ where: eq(projects.id, d.projectId) }) : null;
     const task = await ctx.db.query.tasks.findFirst({ where: eq(tasks.deliverableId, d.id) });
     const spec = d.specKey ? ASSET_SPEC_BY_KEY[d.specKey] ?? null : null;
@@ -52,6 +53,7 @@ export const deliverablesRouter = router({
         ...v.version,
         uploaderName: v.uploaderName,
         publicUrl: v.version.storageKey ? storage.publicUrl(v.version.storageKey) : v.version.url,
+        file: v.version.fileId ? { status: fileById.get(v.version.fileId)?.status ?? "ready", progressBytes: jobByFile.get(v.version.fileId)?.progressBytes ?? 0, totalBytes: jobByFile.get(v.version.fileId)?.totalBytes ?? null, error: jobByFile.get(v.version.fileId)?.error ?? null } : null,
         specCheck: spec ? checkAgainstSpec(spec, { width: v.version.width, height: v.version.height, bytes: v.version.bytes, durationSeconds: v.version.durationSeconds }) : null,
       })),
     };
@@ -123,20 +125,23 @@ export const deliverablesRouter = router({
       let values: typeof deliverableVersions.$inferInsert;
       if (input.link) {
         const parsed = parseVideoLink(input.link);
+        // A Drive / Dropbox / Box file link is copied in rather than stored as a URL.
+        if (parsed.cloud) throw new TRPCError({ code: "PRECONDITION_FAILED", message: "CLOUD_LINK" });
         values = { deliverableId: d.id, versionNumber, sourceType: parsed.source, url: parsed.url, externalId: parsed.externalId, note: input.note ?? null, uploadedByMemberId: ctx.member.id };
       } else {
-        const u = input.upload!;
+        const f = await loadReadyFile(ctx, input.upload!.fileId);
         values = {
           deliverableId: d.id,
           versionNumber,
           sourceType: "upload",
-          storageKey: u.storageKey,
-          fileName: u.fileName,
-          mimeType: u.mimeType,
-          bytes: u.bytes,
-          width: u.width ?? null,
-          height: u.height ?? null,
-          durationSeconds: u.durationSeconds ?? null,
+          fileId: f.id,
+          storageKey: f.storageKey,
+          fileName: f.fileName,
+          mimeType: f.mimeType,
+          bytes: f.bytes,
+          width: f.width,
+          height: f.height,
+          durationSeconds: f.durationSeconds,
           note: input.note ?? null,
           uploadedByMemberId: ctx.member.id,
         };
@@ -160,7 +165,8 @@ export const deliverablesRouter = router({
     const v = await ctx.db.query.deliverableVersions.findFirst({ where: eq(deliverableVersions.id, input.versionId) });
     if (!v) throw new TRPCError({ code: "NOT_FOUND" });
     await loadDeliverable(ctx, v.deliverableId);
-    if (v.storageKey) await storage.delete(v.storageKey).catch(() => undefined);
+    if (v.fileId) await deleteStoredFile(ctx.db, v.fileId);
+    else if (v.storageKey) await storage.delete(v.storageKey).catch(() => undefined);
     await ctx.db.delete(deliverableVersions).where(eq(deliverableVersions.id, v.id));
     return { ok: true };
   }),

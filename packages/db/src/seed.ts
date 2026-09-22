@@ -2,10 +2,11 @@ import { and, eq, isNull } from "drizzle-orm";
 import fs from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
-import { addDaysISO, snapToWeekday, SYSTEM_TEMPLATES, todayISO, type MemberRole } from "@fletcher/core";
+import { addDaysISO, snapToWeekday, todayISO, type MemberRole } from "@fletcher/core";
 import { createDb } from "./client";
 import { REPO_ROOT, requireEnv } from "./env";
 import { createProjectWithTemplates } from "./services/project-factory";
+import { ensureSystemTemplates } from "./services/system-templates";
 import {
   activityLog,
   comments,
@@ -20,6 +21,7 @@ import {
   users,
   workspaceMembers,
   workspaces,
+  workspaceFiles,
 } from "./schema";
 
 const { db, sql } = createDb();
@@ -29,25 +31,7 @@ const uploadDir = process.env.UPLOAD_DIR
   : path.join(REPO_ROOT, ".uploads");
 
 // 1. System templates (upsert by key)
-for (const t of SYSTEM_TEMPLATES) {
-  await db
-    .insert(templates)
-    .values({
-      systemKey: t.key,
-      workspaceId: null,
-      kind: t.kind,
-      projectType: t.projectType,
-      name: t.name,
-      description: t.description,
-      isDefault: true,
-      definition: t.definition,
-    })
-    .onConflictDoUpdate({
-      target: templates.systemKey,
-      set: { name: t.name, description: t.description, definition: t.definition, updatedAt: new Date() },
-    });
-}
-console.log(`system templates: ${SYSTEM_TEMPLATES.length}`);
+console.log(`system templates: ${await ensureSystemTemplates(db)}`);
 
 // 2. Demo workspace (skip if it already exists)
 const existing = await db.query.workspaces.findFirst({ where: eq(workspaces.slug, "moriah") });
@@ -248,16 +232,19 @@ await sharp({ create: { width: 1200, height: 600, channels: 3, background: "#9ca
 const okStat = await fs.stat(path.join(uploadDir, okKey));
 const badStat = await fs.stat(path.join(uploadDir, badKey));
 
+// Register the two objects so the Files tab and usage meter see them.
+const [okFile] = await db.insert(workspaceFiles).values({ workspaceId: workspace!.id, storageKey: okKey, fileName: "profile.png", mimeType: "image/png", bytes: okStat.size, width: 1000, height: 1000, status: "ready", origin: "seed", uploadedByMemberId: memberByRole.me, readyAt: new Date() }).returning();
+const [badFile] = await db.insert(workspaceFiles).values({ workspaceId: workspace!.id, storageKey: badKey, fileName: "header-crop.png", mimeType: "image/png", bytes: badStat.size, width: 1200, height: 600, status: "ready", origin: "seed", uploadedByMemberId: memberByRole.me, readyAt: new Date() }).returning();
 const [igSlot] = await db
   .insert(deliverables)
   .values({ workspaceId: workspace!.id, kind: "image", title: "Instagram profile image", specKey: "profile_instagram", assetScope: "workspace", status: "approved" })
   .returning();
-await db.insert(deliverableVersions).values({ deliverableId: igSlot!.id, versionNumber: 1, sourceType: "upload", storageKey: okKey, fileName: "profile.png", mimeType: "image/png", bytes: okStat.size, width: 1000, height: 1000, uploadedByMemberId: memberByRole.me });
+await db.insert(deliverableVersions).values({ deliverableId: igSlot!.id, versionNumber: 1, sourceType: "upload", fileId: okFile!.id, storageKey: okKey, fileName: "profile.png", mimeType: "image/png", bytes: okStat.size, width: 1000, height: 1000, uploadedByMemberId: memberByRole.me });
 const [xSlot] = await db
   .insert(deliverables)
   .values({ workspaceId: workspace!.id, kind: "image", title: "X / Twitter profile image", specKey: "profile_x", assetScope: "workspace", status: "draft" })
   .returning();
-await db.insert(deliverableVersions).values({ deliverableId: xSlot!.id, versionNumber: 1, sourceType: "upload", storageKey: badKey, fileName: "header-crop.png", mimeType: "image/png", bytes: badStat.size, width: 1200, height: 600, uploadedByMemberId: memberByRole.social });
+await db.insert(deliverableVersions).values({ deliverableId: xSlot!.id, versionNumber: 1, sourceType: "upload", fileId: badFile!.id, storageKey: badKey, fileName: "header-crop.png", mimeType: "image/png", bytes: badStat.size, width: 1200, height: 600, uploadedByMemberId: memberByRole.social });
 
 // 6. Activity
 await db.insert(activityLog).values([

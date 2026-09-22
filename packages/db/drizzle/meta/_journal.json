@@ -29,6 +29,27 @@
       "when": 1790029330520,
       "tag": "0003_closed_zaran",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790040448571,
+      "tag": "0004_nappy_micromax",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790041399456,
+      "tag": "0005_eager_rhodey",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1790041846155,
+      "tag": "0006_many_diamondback",
+      "breakpoints": true
     }
   ]
 }

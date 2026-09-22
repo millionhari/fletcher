@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AtSign, CalendarDays, ChevronsUpDown, FolderKanban, Images, LayoutGrid, LayoutTemplate, Moon, Plus, Search, Sun, Users } from "lucide-react";
+import { AtSign, CalendarDays, ChevronsUpDown, FolderKanban, HardDrive, Images, LayoutGrid, LayoutTemplate, Moon, Plus, Search, Sun, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/lib/trpc/client";
 import { PROJECT_TYPE_LABELS, type ProjectType } from "@fletcher/core";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/fletcher/kbd";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { CommandPalette } from "@/components/fletcher/command-palette";
-import { MemberAvatar } from "@/components/fletcher/member-avatar";
+import { UserMenu } from "@/components/fletcher/auth/user-menu";
 
 export interface SidebarProject {
   id: string;
@@ -29,7 +29,7 @@ export interface SidebarWorkspace {
   artistName: string;
 }
 
-export function Sidebar({ workspace, workspaces, projects, userName }: { workspace: SidebarWorkspace; workspaces: SidebarWorkspace[]; projects: SidebarProject[]; userName: string }) {
+export function Sidebar({ workspace, workspaces, projects, user }: { workspace: SidebarWorkspace; workspaces: SidebarWorkspace[]; projects: SidebarProject[]; user: { name: string; email: string; avatarUrl: string | null; devSession: boolean } }) {
   const pathname = usePathname();
   const base = `/w/${workspace.slug}`;
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -54,6 +54,7 @@ export function Sidebar({ workspace, workspaces, projects, userName }: { workspa
     { href: `${base}/mentions`, label: "Mentions", icon: AtSign, badge: unreadMentions.data ?? 0 },
     { href: `${base}/calendar`, label: "Calendar", icon: CalendarDays },
     { href: `${base}/assets`, label: "Profile kit", icon: Images },
+    { href: `${base}/files`, label: "Files", icon: HardDrive },
     { href: `${base}/team`, label: "Team", icon: Users },
     { href: `${base}/templates`, label: "Templates", icon: LayoutTemplate },
   ];
@@ -83,7 +84,7 @@ export function Sidebar({ workspace, workspaces, projects, userName }: { workspa
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem disabled>Create workspace (soon)</DropdownMenuItem>
+            <DropdownMenuItem asChild><Link href="/welcome"><Plus className="text-muted-foreground" />Create workspace</Link></DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -134,12 +135,8 @@ export function Sidebar({ workspace, workspaces, projects, userName }: { workspa
         ))}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-sidebar-border px-3 py-2.5">
-        <MemberAvatar name={userName} size="sm" showTooltip={false} />
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-medium">{userName}</div>
-          <div className="truncate text-2xs text-muted-foreground">Dev session</div>
-        </div>
+      <div className="flex items-center gap-1 border-t border-sidebar-border px-1 py-1.5">
+        <div className="min-w-0 flex-1"><UserMenu name={user.name} email={user.email} avatarUrl={user.avatarUrl} devSession={user.devSession} /></div>
         <ThemeToggle />
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} base={base} projects={projects} />

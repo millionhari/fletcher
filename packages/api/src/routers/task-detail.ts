@@ -1,12 +1,13 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { docMentionIds, timelineTemplateDefSchema } from "@fletcher/core";
-import { activityLog, comments, deliverableVersions, deliverables, mentions, projects, taskAttachments, taskChecklistItems, tasks, templates, users, workspaceMembers } from "@fletcher/db";
+import { activityLog, comments, deliverableVersions, deliverables, importJobs, mentions, projects, taskAttachments, workspaceFiles, taskChecklistItems, tasks, templates, users, workspaceMembers } from "@fletcher/db";
 import type { Db } from "@fletcher/db";
 import { TRPCError } from "@trpc/server";
 import { router, workspaceProcedure } from "../trpc";
 import { storage } from "../storage";
 import { recordMentions } from "../mentions";
+import { deleteStoredFile, loadReadyFile } from "../files";
 
 export async function loadTaskInWorkspace(ctx: { db: Db; workspace: { id: string } }, taskId: string) {
   const row = await ctx.db
@@ -23,7 +24,7 @@ async function log(ctx: { db: Db; workspace: { id: string }; member: { id: strin
   await ctx.db.insert(activityLog).values({ workspaceId: ctx.workspace.id, projectId: task.projectId, taskId: task.id, actorMemberId: ctx.member.id, type, payload });
 }
 
-const uploadMeta = z.object({ storageKey: z.string().min(1), fileName: z.string().min(1), mimeType: z.string().min(1), bytes: z.number().int().nonnegative() });
+const uploadMeta = z.object({ fileId: z.string().uuid() });
 
 /** Everything the task panel needs in one round trip. */
 export const taskDetailRouter = router({
@@ -59,12 +60,19 @@ export const taskDetailRouter = router({
     const latestByDeliverable = new Map<string, (typeof latestVersions)[number]>();
     for (const v of latestVersions) if (!latestByDeliverable.has(v.deliverableId)) latestByDeliverable.set(v.deliverableId, v);
 
+    const attFileIds = attachmentRows.map((r) => r.attachment.fileId).filter((x): x is string => !!x);
+    const attFiles = attFileIds.length ? await ctx.db.select({ id: workspaceFiles.id, status: workspaceFiles.status }).from(workspaceFiles).where(inArray(workspaceFiles.id, attFileIds)) : [];
+    const attJobs = attFileIds.length ? await ctx.db.select({ fileId: importJobs.fileId, progressBytes: importJobs.progressBytes, totalBytes: importJobs.totalBytes, error: importJobs.error }).from(importJobs).where(inArray(importJobs.fileId, attFileIds)).orderBy(desc(importJobs.createdAt)) : [];
+    const attFileById = new Map(attFiles.map((f) => [f.id, f]));
+    const attJobByFile = new Map<string, (typeof attJobs)[number]>();
+    for (const j of attJobs) if (!attJobByFile.has(j.fileId)) attJobByFile.set(j.fileId, j);
     const attachments = attachmentRows.map((r) => {
       const v = r.deliverable ? latestByDeliverable.get(r.deliverable.id) ?? null : null;
       return {
         ...r.attachment,
         addedByName: r.addedByName,
         publicUrl: r.attachment.storageKey ? storage.publicUrl(r.attachment.storageKey) : r.attachment.url,
+        file: r.attachment.fileId ? { status: attFileById.get(r.attachment.fileId)?.status ?? "ready", progressBytes: attJobByFile.get(r.attachment.fileId)?.progressBytes ?? 0, totalBytes: attJobByFile.get(r.attachment.fileId)?.totalBytes ?? null, error: attJobByFile.get(r.attachment.fileId)?.error ?? null } : null,
         deliverable: r.deliverable
           ? { id: r.deliverable.id, title: r.deliverable.title, kind: r.deliverable.kind, status: r.deliverable.status, specKey: r.deliverable.specKey, latestVersion: v ? { ...v, publicUrl: v.storageKey ? storage.publicUrl(v.storageKey) : v.url } : null }
           : null,
@@ -184,8 +192,9 @@ export const taskDetailRouter = router({
   }),
   attachFile: workspaceProcedure.input(z.object({ taskId: z.string().uuid(), upload: uploadMeta })).mutation(async ({ ctx, input }) => {
     const { task } = await loadTaskInWorkspace(ctx, input.taskId);
-    const [a] = await ctx.db.insert(taskAttachments).values({ taskId: task.id, kind: "file", title: input.upload.fileName, storageKey: input.upload.storageKey, fileName: input.upload.fileName, mimeType: input.upload.mimeType, bytes: input.upload.bytes, addedByMemberId: ctx.member.id, sortOrder: 999 }).returning();
-    await log(ctx, task, "task.attachment", { title: input.upload.fileName, kind: "file" });
+    const f = await loadReadyFile(ctx, input.upload.fileId);
+    const [a] = await ctx.db.insert(taskAttachments).values({ taskId: task.id, kind: "file", title: f.fileName, fileId: f.id, storageKey: f.storageKey, fileName: f.fileName, mimeType: f.mimeType, bytes: f.bytes, addedByMemberId: ctx.member.id, sortOrder: 999 }).returning();
+    await log(ctx, task, "task.attachment", { title: f.fileName, kind: "file" });
     return a!;
   }),
   /** Create a brand-new deliverable on the task's project and attach it (also becomes the primary review deliverable if none). */
@@ -203,7 +212,8 @@ export const taskDetailRouter = router({
     const a = await ctx.db.query.taskAttachments.findFirst({ where: eq(taskAttachments.id, input.attachmentId) });
     if (!a) throw new TRPCError({ code: "NOT_FOUND" });
     await loadTaskInWorkspace(ctx, a.taskId);
-    if (a.kind === "file" && a.storageKey) await storage.delete(a.storageKey).catch(() => undefined);
+    if (a.fileId) await deleteStoredFile(ctx.db, a.fileId);
+    else if (a.kind === "file" && a.storageKey) await storage.delete(a.storageKey).catch(() => undefined);
     await ctx.db.delete(taskAttachments).where(eq(taskAttachments.id, a.id));
     return { ok: true };
   }),

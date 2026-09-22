@@ -42,11 +42,7 @@ export function fmtTime(hhmm: string | null | undefined): string {
   return m === 0 ? `${hour}${suffix}` : `${hour}:${String(m).padStart(2, "0")}${suffix}`;
 }
 
-export function fmtBytes(bytes: number | null | undefined): string {
-  if (!bytes) return "";
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+export { fmtBytes } from "@fletcher/core";
 
 export function initials(name: string | null | undefined): string {
   if (!name) return "?";

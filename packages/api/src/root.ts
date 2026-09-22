@@ -10,8 +10,13 @@ import { commsRouter } from "./routers/comms";
 import { dashboardRouter } from "./routers/dashboard";
 import { taskDetailRouter } from "./routers/task-detail";
 import { mentionsRouter } from "./routers/mentions";
+import { accountRouter } from "./routers/account";
+import { filesRouter } from "./routers/files";
+import { connectionsRouter } from "./routers/connections";
+import { importsRouter } from "./routers/imports";
 
 export const appRouter = router({
+  account: accountRouter,
   workspace: workspaceRouter,
   members: membersRouter,
   templates: templatesRouter,
@@ -21,6 +26,9 @@ export const appRouter = router({
   deliverables: deliverablesRouter,
   comments: commentsRouter,
   mentions: mentionsRouter,
+  files: filesRouter,
+  connections: connectionsRouter,
+  imports: importsRouter,
   comms: commsRouter,
   dashboard: dashboardRouter,
 });

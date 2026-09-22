@@ -18,6 +18,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeliverableStatusBadge } from "@/components/fletcher/status-badge";
 import { UploadDropzone, type UploadResult } from "@/components/fletcher/upload-dropzone";
+import { CloudSourceButtons } from "@/components/fletcher/cloud/cloud-source-buttons";
+import { ImportProgress, type FileState } from "@/components/fletcher/cloud/import-progress";
+import { LinkProviderIcon } from "@/components/fletcher/cloud/link-provider-icon";
+import { detectLinkProvider, LINK_PROVIDER_LABELS } from "@fletcher/core";
 
 const KIND_ICON: Record<string, React.ComponentType<{ className?: string }>> = { video: Film, image: ImageIcon, audio: Music, document: FileText, link: Link2 };
 
@@ -31,6 +35,7 @@ export type Attachment = {
   bytes: number | null;
   publicUrl: string | null;
   addedByName: string | null;
+  file?: FileState;
   deliverable: { id: string; title: string; kind: string; status: "draft" | "in_review" | "changes_requested" | "approved"; specKey: string | null; latestVersion: { versionNumber: number; sourceType: string; publicUrl: string | null; mimeType: string | null } | null } | null;
 };
 
@@ -57,6 +62,8 @@ export function TaskAttachments({ taskId, projectId, attachments, onChanged }: {
 
 function AttachmentCard({ a, wsSlug, onRemove }: { a: Attachment; wsSlug: string; onRemove: () => void }) {
   const d = a.deliverable;
+  if (a.file && a.file.status !== "ready") return <ImportProgress file={a.file} fileName={a.fileName ?? a.title} compact onDelete={onRemove} />;
+  const provider = !d && a.kind === "link" && a.url ? detectLinkProvider(a.url) : null;
   const Icon = d ? KIND_ICON[d.kind] ?? FileText : a.kind === "link" ? Link2 : a.mimeType?.startsWith("image/") ? ImageIcon : FileText;
   const thumb = d?.latestVersion?.mimeType?.startsWith("image/") ? d.latestVersion.publicUrl : a.mimeType?.startsWith("image/") ? a.publicUrl : null;
   const href = d ? `/w/${wsSlug}/deliverables/${d.id}` : a.publicUrl ?? a.url ?? "#";
@@ -65,11 +72,11 @@ function AttachmentCard({ a, wsSlug, onRemove }: { a: Attachment; wsSlug: string
   return (
     <div className="surface group relative flex items-center gap-3 p-2.5">
       <Wrapper href={href} {...(external ? { target: "_blank", rel: "noreferrer" } : {})} className="flex min-w-0 flex-1 items-center gap-3">
-        {thumb ? <img src={thumb} alt="" className="size-10 shrink-0 rounded-md object-cover" /> : <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"><Icon className="size-4" /></span>}
+        {thumb ? <img src={thumb} alt="" className="size-10 shrink-0 rounded-md object-cover" /> : provider ? <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted"><LinkProviderIcon provider={provider} url={a.url!} className="size-5" /></span> : <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"><Icon className="size-4" /></span>}
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-medium">{d?.title ?? a.title ?? a.fileName ?? a.url}</span>
           <span className="flex items-center gap-1.5 text-2xs text-muted-foreground">
-            {d ? (<><DeliverableStatusBadge status={d.status} />{d.latestVersion ? <span className="tabular">v{d.latestVersion.versionNumber} · {d.latestVersion.sourceType}</span> : <span>no versions</span>}</>) : a.kind === "link" ? <span className="truncate">{a.url}</span> : <span>{fmtBytes(a.bytes)}{a.mimeType ? ` · ${a.mimeType.split("/")[1]}` : ""}</span>}
+            {d ? (<><DeliverableStatusBadge status={d.status} />{d.latestVersion ? <span className="tabular">v{d.latestVersion.versionNumber} · {d.latestVersion.sourceType}</span> : <span>no versions</span>}</>) : a.kind === "link" ? <span className="truncate">{provider ? `${LINK_PROVIDER_LABELS[provider]} · ` : ""}{a.url?.replace(/^https?:\/\/(www\.)?/, "")}</span> : <span>{fmtBytes(a.bytes)}{a.mimeType ? ` · ${a.mimeType.split("/")[1]}` : ""}</span>}
           </span>
         </span>
         {external && <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />}
@@ -95,6 +102,7 @@ function AttachPopover({ taskId, projectId, onChanged, attachedDeliverableIds }:
   const attachDeliverable = useMutation(trpc.taskDetail.attachDeliverable.mutationOptions({ onSuccess: done, onError: (e) => toast.error(e.message) }));
   const attachLink = useMutation(trpc.taskDetail.attachLink.mutationOptions({ onSuccess: done, onError: (e) => toast.error(e.message) }));
   const attachFile = useMutation(trpc.taskDetail.attachFile.mutationOptions({ onSuccess: done, onError: (e) => toast.error(e.message) }));
+  const importPick = useMutation(trpc.imports.fromProvider.mutationOptions({ onSuccess: async () => { await done(); toast.success("Copying the file in…"); }, onError: (e) => toast.error(e.message) }));
   const createNew = useMutation(trpc.taskDetail.createAndAttachDeliverable.mutationOptions({ onSuccess: done, onError: (e) => toast.error(e.message) }));
   const list = (candidates.data ?? []).filter((c) => !attachedDeliverableIds.includes(c.id)).filter((c) => !q || c.title.toLowerCase().includes(q.toLowerCase()));
   const groups = [...new Set(list.map((c) => c.group))];
@@ -142,7 +150,8 @@ function AttachPopover({ taskId, projectId, onChanged, attachedDeliverableIds }:
         {tab === "upload" && (
           <div className="grid gap-2">
             <UploadDropzone folder={`tasks/${taskId}`} onUploaded={setUpload} value={upload} compact />
-            <Button size="sm" disabled={!upload || attachFile.isPending} onClick={() => upload && attachFile.mutate({ workspace: ws.slug, taskId, upload: { storageKey: upload.storageKey, fileName: upload.fileName, mimeType: upload.mimeType, bytes: upload.bytes } })}>Attach file</Button>
+            <CloudSourceButtons disabled={importPick.isPending} onPick={(p) => importPick.mutate({ workspace: ws.slug, target: { taskId }, provider: p.provider, file: { id: p.id, link: p.link, name: p.name, mimeType: p.mimeType, bytes: p.bytes } })} />
+            <Button size="sm" disabled={!upload || attachFile.isPending} onClick={() => upload && attachFile.mutate({ workspace: ws.slug, taskId, upload: { fileId: upload.fileId } })}>Attach file</Button>
           </div>
         )}
         {tab === "new" && (

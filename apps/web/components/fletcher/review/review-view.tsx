@@ -26,6 +26,9 @@ import { MemberAvatar } from "@/components/fletcher/member-avatar";
 import { VideoPlayer, type PlayerHandle } from "@/components/fletcher/review/video-player";
 import { ScrubBar } from "@/components/fletcher/review/scrub-bar";
 import { UploadDropzone, type UploadResult } from "@/components/fletcher/upload-dropzone";
+import { CloudSourceButtons } from "@/components/fletcher/cloud/cloud-source-buttons";
+import { ImportProgress } from "@/components/fletcher/cloud/import-progress";
+import type { CloudPick } from "@/components/fletcher/cloud/pickers";
 import { CommentThread, readAnchor } from "@/components/fletcher/comment-thread";
 import type { AnnotatedViewerHandle, AnnotationBox } from "@/components/fletcher/review/annotation-surface";
 import { BackButton } from "@/components/fletcher/back-button";
@@ -133,7 +136,8 @@ export function ReviewView({ deliverableId }: { deliverableId: string }) {
   const ws = useWorkspace();
   const trpc = useTRPC();
   const qc = useQueryClient();
-  const q = useQuery(trpc.deliverables.get.queryOptions({ workspace: ws.slug, deliverableId }));
+  // While a version is still being copied in, poll so the progress bar moves without a reload.
+  const q = useQuery({ ...trpc.deliverables.get.queryOptions({ workspace: ws.slug, deliverableId }), refetchInterval: (query) => (query.state.data?.versions.some((v) => v.file?.status === "importing") ? 2000 : false) });
   const [versionId, setVersionId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const versions = q.data?.versions ?? [];
@@ -147,6 +151,7 @@ export function ReviewView({ deliverableId }: { deliverableId: string }) {
 
   const setStatus = useMutation(trpc.deliverables.setStatus.mutationOptions({ onSuccess: async (d) => { await invalidate(); toast.success(`Marked ${DELIVERABLE_STATUS_LABELS[d.status].toLowerCase()}`); }, onError: (e) => toast.error(e.message) }));
   const deleteVersion = useMutation(trpc.deliverables.deleteVersion.mutationOptions({ onSuccess: async () => { setVersionId(null); await invalidate(); toast.success("Version removed"); }, onError: (e) => toast.error(e.message) }));
+  const retryImport = useMutation(trpc.imports.retry.mutationOptions({ onSuccess: () => invalidate(), onError: (e) => toast.error(e.message) }));
 
   if (q.isLoading || !q.data) return <div className="grid grid-cols-[1fr_380px] gap-6"><Skeleton className="aspect-video rounded-xl" /><Skeleton className="h-96 rounded-xl" /></div>;
   const { deliverable, project, task, spec } = q.data;
@@ -208,7 +213,15 @@ export function ReviewView({ deliverableId }: { deliverableId: string }) {
                 </div>
               )}
             </div>
-            {active && (isVideo && active.sourceType !== "upload" || (active.mimeType?.startsWith("video/") ?? false) || (active.sourceType === "url" && isVideo)) ? (
+            {active && active.file && active.file.status !== "ready" ? (
+              <ImportProgress
+                file={active.file}
+                fileName={active.fileName}
+                origin={null}
+                onRetry={() => active.fileId && retryImport.mutate({ workspace: ws.slug, fileId: active.fileId })}
+                onDelete={() => deleteVersion.mutate({ workspace: ws.slug, versionId: active.id })}
+              />
+            ) : active && (isVideo && active.sourceType !== "upload" || (active.mimeType?.startsWith("video/") ?? false) || (active.sourceType === "url" && isVideo)) ? (
               <VersionReview key={active.id} version={active} deliverableId={deliverableId} invalidate={invalidate} />
             ) : active && isPdf && (active.publicUrl ?? active.url) ? (
               <PdfReview key={active.id} version={active} invalidate={invalidate} />
@@ -421,11 +434,28 @@ function AddVersionDialog({ open, onOpenChange, deliverableId, kind, onDone }: {
   const ws = useWorkspace();
   const trpc = useTRPC();
   const copy = KIND_COPY[kind];
+  const usage = useQuery(trpc.files.usage.queryOptions({ workspace: ws.slug }));
+  // Free workspaces link video rather than host it; the tab is still shown so the reason is visible.
+  const videoBlocked = kind === "video" && usage.data ? !usage.data.videoAllowed : false;
   const [mode, setMode] = useState<"link" | "upload">(copy.defaultMode);
   const [link, setLink] = useState("");
   const [note, setNote] = useState("");
   const [upload, setUpload] = useState<UploadResult | null>(null);
-  const add = useMutation(trpc.deliverables.addVersion.mutationOptions({ onSuccess: async (v) => { await onDone(v); onOpenChange(false); setLink(""); setNote(""); setUpload(null); toast.success(`v${v.versionNumber} added`); }, onError: (e) => toast.error(e.message) }));
+  const finish = async (id: string, msg: string) => { await onDone({ id }); onOpenChange(false); setLink(""); setNote(""); setUpload(null); toast.success(msg); };
+  const add = useMutation(trpc.deliverables.addVersion.mutationOptions({ onSuccess: (v) => finish(v.id, `v${v.versionNumber} added`), onError: (e) => toast.error(e.message) }));
+  const importLink = useMutation(trpc.imports.fromLink.mutationOptions({ onSuccess: (r) => finish(r.versionId!, "Copying the file in…"), onError: (e) => toast.error(e.message) }));
+  const importPick = useMutation(trpc.imports.fromProvider.mutationOptions({ onSuccess: (r) => finish(r.versionId!, "Copying the file in…"), onError: (e) => toast.error(e.message) }));
+  const onPick = (p: CloudPick) => importPick.mutate({ workspace: ws.slug, target: { deliverableId, note: note || undefined }, provider: p.provider, file: { id: p.id, link: p.link, name: p.name, mimeType: p.mimeType, bytes: p.bytes } });
+  const submit = () => {
+    if (mode === "link") {
+      const cloud = parseVideoLink(link).cloud;
+      if (cloud) importLink.mutate({ workspace: ws.slug, target: { deliverableId, note: note || undefined }, url: link.trim() });
+      else add.mutate({ workspace: ws.slug, deliverableId, note: note || undefined, link: link.trim() });
+    } else if (upload) {
+      add.mutate({ workspace: ws.slug, deliverableId, note: note || undefined, upload: { fileId: upload.fileId } });
+    }
+  };
+  const busy = add.isPending || importLink.isPending || importPick.isPending;
   const parsed = link ? parseVideoLink(link) : null;
   const canSubmit = mode === "link" ? /^https?:\/\//.test(link) : !!upload;
   return (
@@ -438,11 +468,19 @@ function AddVersionDialog({ open, onOpenChange, deliverableId, kind, onDone }: {
         <Tabs value={mode} onValueChange={(v) => setMode(v as "link" | "upload")}>
           <TabsList><TabsTrigger value="link">Paste link</TabsTrigger><TabsTrigger value="upload">Upload file</TabsTrigger></TabsList>
         </Tabs>
+        {!videoBlocked && <CloudSourceButtons onPick={onPick} disabled={busy} />}
         {mode === "link" ? (
           <div className="grid gap-1.5">
             <Label>{copy.linkLabel}</Label>
             <Input autoFocus value={link} onChange={(e) => setLink(e.target.value)} placeholder={copy.linkPlaceholder} />
             {parsed && parsed.source !== "url" && <p className="text-2xs text-muted-foreground">Detected: <span className="font-medium capitalize text-foreground">{parsed.source}</span>{parsed.externalId ? ` · ${parsed.externalId}` : ""}</p>}
+            {parsed?.cloud && <p className="text-2xs text-muted-foreground">Detected: <span className="font-medium text-foreground">{parsed.cloud.provider === "google_drive" ? "Google Drive" : parsed.cloud.provider === "dropbox" ? "Dropbox" : "Box"}</span> file. Fletcher will copy it into this workspace so everyone can review it.</p>}
+          </div>
+        ) : videoBlocked ? (
+          <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center">
+            <div className="text-xs font-medium">Video uploads need a paid plan</div>
+            <p className="mt-1 text-2xs text-muted-foreground">Paste a YouTube or Vimeo link instead — time-coded comments work the same. <Link href={`/w/${ws.slug}/files`} className="underline hover:text-foreground">See plan</Link></p>
+            <Button variant="outline" size="xs" className="mt-3" onClick={() => setMode("link")}>Paste a link</Button>
           </div>
         ) : (
           <UploadDropzone folder={`deliverables/${deliverableId}`} accept={copy.accept} hint={copy.uploadHint} onUploaded={setUpload} value={upload} />
@@ -453,7 +491,7 @@ function AddVersionDialog({ open, onOpenChange, deliverableId, kind, onDone }: {
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={!canSubmit || add.isPending} onClick={() => add.mutate({ workspace: ws.slug, deliverableId, note: note || undefined, link: mode === "link" ? link.trim() : undefined, upload: mode === "upload" && upload ? { storageKey: upload.storageKey, fileName: upload.fileName, mimeType: upload.mimeType, bytes: upload.bytes, width: upload.width, height: upload.height, durationSeconds: upload.durationSeconds } : undefined })}>{add.isPending ? "Adding…" : "Add version"}</Button>
+          <Button disabled={!canSubmit || busy} onClick={submit}>{add.isPending ? "Adding…" : "Add version"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

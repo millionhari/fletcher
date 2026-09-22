@@ -4,6 +4,25 @@ import { MEMBER_ROLES, PERMISSIONS, todayISO } from "@fletcher/core";
 import { projects, tasks, users, workspaceMembers } from "@fletcher/db";
 import { TRPCError } from "@trpc/server";
 import { router, workspaceProcedure } from "../trpc";
+import { requirePermission } from "../context";
+import { inviteByEmail, supabaseConfigured } from "../auth/admin";
+
+const MANAGE = ["owner", "admin"] as const;
+
+/** Where an invite lands: the auth callback, which then drops them into the workspace. */
+function inviteRedirect(slug: string): string {
+  const app = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  return `${app}/auth/callback?next=${encodeURIComponent(`/w/${slug}`)}`;
+}
+
+/**
+ * Send the invite when Supabase is wired up; in local dev without it the row
+ * simply exists and the person appears once they sign in with that email.
+ */
+async function sendInvite(email: string, slug: string, workspaceName: string): Promise<"sent" | "already_registered" | "skipped"> {
+  if (!supabaseConfigured()) return "skipped";
+  return inviteByEmail(email, inviteRedirect(slug), { workspace: workspaceName });
+}
 
 export const membersRouter = router({
   list: workspaceProcedure.query(async ({ ctx }) => {
@@ -19,6 +38,8 @@ export const membersRouter = router({
         name: users.name,
         email: users.email,
         avatarUrl: users.avatarUrl,
+        authId: users.authId,
+        invitedAt: users.invitedAt,
       })
       .from(workspaceMembers)
       .innerJoin(users, eq(workspaceMembers.userId, users.id))
@@ -47,7 +68,7 @@ export const membersRouter = router({
   add: workspaceProcedure
     .input(
       z.object({
-        name: z.string().min(1),
+        name: z.string().trim().optional(),
         email: z.string().email(),
         role: z.enum(MEMBER_ROLES),
         permission: z.enum(PERMISSIONS).default("member"),
@@ -57,10 +78,14 @@ export const membersRouter = router({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      requirePermission(ctx.member, MANAGE);
+      const email = input.email.toLowerCase();
+      // Name is a placeholder until they sign in and we learn it from their account.
+      const name = input.name || email.split("@")[0]!;
       const [user] = await ctx.db
         .insert(users)
-        .values({ email: input.email.toLowerCase(), name: input.name })
-        .onConflictDoUpdate({ target: users.email, set: { name: input.name } })
+        .values({ email, name })
+        .onConflictDoUpdate({ target: users.email, set: input.name ? { name: input.name } : { updatedAt: new Date() } })
         .returning();
       const existing = await ctx.db.query.workspaceMembers.findFirst({
         where: and(eq(workspaceMembers.workspaceId, ctx.workspace.id), eq(workspaceMembers.userId, user!.id)),
@@ -78,8 +103,29 @@ export const membersRouter = router({
           isExternal: input.isExternal,
         })
         .returning();
+      // Someone who already has an account just signs in; the membership is waiting.
+      if (!user!.authId) {
+        const outcome = await sendInvite(email, ctx.workspace.slug, ctx.workspace.name);
+        if (outcome === "sent") await ctx.db.update(users).set({ invitedAt: new Date() }).where(eq(users.id, user!.id));
+      }
       return member!;
     }),
+
+  resendInvite: workspaceProcedure.input(z.object({ memberId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+    requirePermission(ctx.member, MANAGE);
+    const row = await ctx.db
+      .select({ email: users.email, authId: users.authId, userId: users.id })
+      .from(workspaceMembers)
+      .innerJoin(users, eq(workspaceMembers.userId, users.id))
+      .where(and(eq(workspaceMembers.id, input.memberId), eq(workspaceMembers.workspaceId, ctx.workspace.id)))
+      .then((r) => r[0]);
+    if (!row) throw new TRPCError({ code: "NOT_FOUND" });
+    if (row.authId) throw new TRPCError({ code: "BAD_REQUEST", message: "They already have an account — ask them to sign in." });
+    const outcome = await sendInvite(row.email, ctx.workspace.slug, ctx.workspace.name);
+    if (outcome === "skipped") throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Email invites aren't configured in this environment." });
+    await ctx.db.update(users).set({ invitedAt: new Date() }).where(eq(users.id, row.userId));
+    return { outcome };
+  }),
 
   update: workspaceProcedure
     .input(
@@ -95,6 +141,8 @@ export const membersRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const { memberId, name, ...rest } = input;
+      // Anyone may fix their own title/company/name; changing roles or permissions is a manager's job.
+      if (memberId !== ctx.member.id || rest.role !== undefined || rest.permission !== undefined) requirePermission(ctx.member, MANAGE);
       const [member] = await ctx.db
         .update(workspaceMembers)
         .set({ ...rest, updatedAt: new Date() })
@@ -106,6 +154,7 @@ export const membersRouter = router({
     }),
 
   remove: workspaceProcedure.input(z.object({ memberId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
+    requirePermission(ctx.member, MANAGE);
     if (input.memberId === ctx.member.id) throw new TRPCError({ code: "BAD_REQUEST", message: "You cannot remove yourself" });
     await ctx.db
       .delete(workspaceMembers)

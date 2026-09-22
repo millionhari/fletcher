@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { SpecStatusPill } from "@/components/fletcher/status-badge";
-import { uploadFile } from "@/components/fletcher/upload-dropzone";
+import { useUploader } from "@/components/fletcher/upload-dropzone";
 import { SectionHeader } from "@/components/fletcher/page-header";
 import { ProgressBar } from "@/components/fletcher/progress-ring";
 
@@ -30,6 +30,7 @@ export function AssetGrid({ scope, projectId, title, description }: { scope: Ass
   const ensure = useMutation(trpc.deliverables.ensureSlot.mutationOptions());
   const addVersion = useMutation(trpc.deliverables.addVersion.mutationOptions());
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  const { upload: uploadFile } = useUploader();
 
   const invalidate = () => qc.invalidateQueries({ queryKey: trpc.deliverables.assetSlots.queryKey({ workspace: ws.slug, scope, projectId: projectId ?? null }) });
 
@@ -38,7 +39,7 @@ export function AssetGrid({ scope, projectId, title, description }: { scope: Ass
     try {
       const { deliverableId } = await ensure.mutateAsync({ workspace: ws.slug, scope, specKey: spec.key, projectId: projectId ?? null });
       const r = await uploadFile(file, `assets/${scope}/${spec.key}`);
-      await addVersion.mutateAsync({ workspace: ws.slug, deliverableId, upload: { storageKey: r.storageKey, fileName: r.fileName, mimeType: r.mimeType, bytes: r.bytes, width: r.width, height: r.height, durationSeconds: r.durationSeconds } });
+      await addVersion.mutateAsync({ workspace: ws.slug, deliverableId, upload: { fileId: r.fileId } });
       await invalidate();
       toast.success(`${spec.label} uploaded`);
     } catch (e) {

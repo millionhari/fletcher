@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./storage": "./src/storage.ts"
+    "./storage": "./src/storage.ts",
+    "./connections": "./src/connections/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
@@ -15,10 +16,12 @@
   "dependencies": {
     "@fletcher/core": "workspace:*",
     "@fletcher/db": "workspace:*",
+    "@supabase/supabase-js": "^2.116.0",
     "@trpc/server": "^11.19.0",
     "drizzle-orm": "^0.45.2",
     "sharp": "^0.35.4",
     "superjson": "^2.2.6",
+    "tus-js-client": "^4.3.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {

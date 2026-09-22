@@ -32,6 +32,7 @@ import {
 import type { Db } from "@fletcher/db";
 import { TRPCError } from "@trpc/server";
 import { router, workspaceProcedure } from "../trpc";
+import { deleteStoredFile } from "../files";
 
 async function loadProject(ctx: { db: Db; workspace: { id: string } }, projectId: string) {
   const project = await ctx.db.query.projects.findFirst({
@@ -272,6 +273,10 @@ export const projectsRouter = router({
 
   delete: workspaceProcedure.input(z.object({ projectId: z.string().uuid() })).mutation(async ({ ctx, input }) => {
     const project = await loadProject(ctx, input.projectId);
+    // Row cascades don't touch storage, so release the project's objects first.
+    const versionFiles = await ctx.db.select({ id: deliverableVersions.fileId }).from(deliverableVersions).innerJoin(deliverables, eq(deliverableVersions.deliverableId, deliverables.id)).where(and(eq(deliverables.projectId, project.id), isNotNull(deliverableVersions.fileId)));
+    const attachmentFiles = await ctx.db.select({ id: taskAttachments.fileId }).from(taskAttachments).innerJoin(tasks, eq(taskAttachments.taskId, tasks.id)).where(and(eq(tasks.projectId, project.id), isNotNull(taskAttachments.fileId)));
+    for (const f of [...versionFiles, ...attachmentFiles]) if (f.id) await deleteStoredFile(ctx.db, f.id);
     await ctx.db.delete(projects).where(eq(projects.id, project.id));
     return { ok: true };
   }),

@@ -1,11 +1,54 @@
 {
   "$schema": "https://turbo.build/schema.json",
-  "globalEnv": ["DATABASE_URL", "DEV_USER_EMAIL", "UPLOAD_DIR"],
+  "globalEnv": [
+    "DATABASE_URL",
+    "DEV_USER_EMAIL",
+    "UPLOAD_DIR",
+    "AUTH_DEV_BYPASS",
+    "NEXT_PUBLIC_SUPABASE_URL",
+    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "NEXT_PUBLIC_APP_URL",
+    "STORAGE_DRIVER",
+    "SUPABASE_STORAGE_BUCKET",
+    "CRON_SECRET",
+    "FLETCHER_SUPERADMIN_EMAILS",
+    "CONNECTIONS_ENCRYPTION_KEY",
+    "GOOGLE_OAUTH_CLIENT_ID",
+    "GOOGLE_OAUTH_CLIENT_SECRET",
+    "GOOGLE_API_KEY",
+    "NEXT_PUBLIC_GOOGLE_API_KEY",
+    "NEXT_PUBLIC_GOOGLE_APP_ID",
+    "NEXT_PUBLIC_DROPBOX_APP_KEY",
+    "BOX_CLIENT_ID",
+    "BOX_CLIENT_SECRET",
+    "IMPORT_MAX_BYTES"
+  ],
   "tasks": {
-    "build": { "dependsOn": ["^build"], "outputs": [".next/**", "!.next/cache/**", "dist/**"] },
-    "dev": { "cache": false, "persistent": true },
-    "typecheck": { "dependsOn": ["^typecheck"] },
-    "test": { "dependsOn": ["^build"] },
+    "build": {
+      "dependsOn": [
+        "^build"
+      ],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "dist/**"
+      ]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "typecheck": {
+      "dependsOn": [
+        "^typecheck"
+      ]
+    },
+    "test": {
+      "dependsOn": [
+        "^build"
+      ]
+    },
     "lint": {}
   }
 }

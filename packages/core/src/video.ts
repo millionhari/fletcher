@@ -1,9 +1,12 @@
+import { parseCloudLink, type ParsedCloudLink } from "./links";
 import type { VersionSource } from "./enums";
 
 export interface ParsedVideoLink {
   source: VersionSource;
   url: string;
   externalId: string | null;
+  /** Set when the link is a cloud-drive file Fletcher can copy in instead of linking. */
+  cloud?: ParsedCloudLink;
 }
 
 /** Detect YouTube / Vimeo links and normalize them; anything else is a plain URL. */
@@ -13,7 +16,8 @@ export function parseVideoLink(raw: string): ParsedVideoLink {
   if (yt?.[1]) return { source: "youtube", url, externalId: yt[1] };
   const vimeo = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
   if (vimeo?.[1]) return { source: "vimeo", url, externalId: vimeo[1] };
-  return { source: "url", url, externalId: null };
+  const cloud = parseCloudLink(url);
+  return { source: "url", url, externalId: null, ...(cloud ? { cloud } : {}) };
 }
 
 export function formatTimestamp(seconds: number): string {

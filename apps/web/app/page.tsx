@@ -1,19 +1,18 @@
 import { redirect } from "next/navigation";
+import { TRPCError } from "@trpc/server";
 import { getServerCaller } from "@/lib/trpc/server";
 
+/** Signed out → login. Signed in → first workspace, or the welcome screen to make one. */
 export default async function Home() {
   const caller = await getServerCaller();
-  const workspaces = await caller.workspace.listMine();
-  const first = workspaces[0];
-  if (!first) {
-    return (
-      <main className="flex flex-1 items-center justify-center p-10">
-        <div className="surface max-w-md p-8">
-          <h1 className="text-lg font-semibold">No workspace yet</h1>
-          <p className="mt-2 text-muted-foreground">Run <code className="font-mono">pnpm db:seed</code> to create the demo workspace.</p>
-        </div>
-      </main>
-    );
+  let workspaces: Awaited<ReturnType<typeof caller.workspace.listMine>>;
+  try {
+    workspaces = await caller.workspace.listMine();
+  } catch (e) {
+    if (e instanceof TRPCError && e.code === "UNAUTHORIZED") redirect("/login");
+    throw e;
   }
+  const first = workspaces[0];
+  if (!first) redirect("/welcome");
   redirect(`/w/${first.slug}`);
 }

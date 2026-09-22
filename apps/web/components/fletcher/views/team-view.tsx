@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { MailPlus, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { MEMBER_ROLES, MEMBER_ROLE_LABELS, PERMISSIONS, type MemberRole, type Permission } from "@fletcher/core";
 import { useTRPC } from "@/lib/trpc/client";
@@ -37,6 +37,7 @@ export function TeamView() {
   const [open, setOpen] = useState(false);
   const invalidate = () => qc.invalidateQueries({ queryKey: trpc.members.list.queryKey({ workspace: ws.slug }) });
   const update = useMutation(trpc.members.update.mutationOptions({ onSuccess: invalidate, onError: (e) => toast.error(e.message) }));
+  const resend = useMutation(trpc.members.resendInvite.mutationOptions({ onSuccess: async () => { await invalidate(); toast.success("Invite sent again"); }, onError: (e) => toast.error(e.message) }));
   const remove = useMutation(trpc.members.remove.mutationOptions({ onSuccess: async () => { await invalidate(); toast.success("Member removed"); }, onError: (e) => toast.error(e.message) }));
 
   const list = members.data ?? [];
@@ -62,7 +63,10 @@ export function TeamView() {
                           <TableCell>
                             <div className="flex items-center gap-2.5">
                               <MemberAvatar name={m.name} size="md" showTooltip={false} />
-                              <div className="min-w-0"><div className="truncate font-medium">{m.name} {m.id === ws.memberId && <span className="text-2xs text-muted-foreground">(you)</span>}</div><div className="truncate text-2xs text-muted-foreground">{m.email}</div></div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5"><span className="truncate font-medium">{m.name}</span>{m.id === ws.memberId && <span className="text-2xs text-muted-foreground">(you)</span>}{!m.authId && <Pill tone="warning" dot={false}>Invited</Pill>}</div>
+                                <div className="truncate text-2xs text-muted-foreground">{m.email}</div>
+                              </div>
                             </div>
                           </TableCell>
                           <TableCell>
@@ -78,7 +82,12 @@ export function TeamView() {
                               <SelectContent>{PERMISSIONS.map((p) => <SelectItem key={p} value={p} className="capitalize">{p}</SelectItem>)}</SelectContent>
                             </Select>
                           </TableCell>
-                          <TableCell>{m.id !== ws.memberId && <Button variant="ghost" size="icon-xs" aria-label="Remove" onClick={() => { if (confirm(`Remove ${m.name}?`)) remove.mutate({ workspace: ws.slug, memberId: m.id }); }}><Trash2 /></Button>}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-0.5">
+                              {!m.authId && <Button variant="ghost" size="icon-xs" aria-label="Resend invite" title="Resend invite" disabled={resend.isPending} onClick={() => resend.mutate({ workspace: ws.slug, memberId: m.id })}><MailPlus /></Button>}
+                              {m.id !== ws.memberId && <Button variant="ghost" size="icon-xs" aria-label="Remove" onClick={() => { if (confirm(`Remove ${m.name}?`)) remove.mutate({ workspace: ws.slug, memberId: m.id }); }}><Trash2 /></Button>}
+                            </div>
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -98,14 +107,14 @@ function AddMemberDialog({ open, onOpenChange, onDone }: { open: boolean; onOpen
   const ws = useWorkspace();
   const trpc = useTRPC();
   const [form, setForm] = useState({ name: "", email: "", role: "videographer" as MemberRole, permission: "member" as Permission, title: "", company: "", isExternal: true });
-  const add = useMutation(trpc.members.add.mutationOptions({ onSuccess: async () => { await onDone(); onOpenChange(false); setForm({ name: "", email: "", role: "videographer", permission: "member", title: "", company: "", isExternal: true }); toast.success("Member added"); }, onError: (e) => toast.error(e.message) }));
+  const add = useMutation(trpc.members.add.mutationOptions({ onSuccess: async () => { await onDone(); onOpenChange(false); setForm({ name: "", email: "", role: "videographer", permission: "member", title: "", company: "", isExternal: true }); toast.success("Invite sent"); }, onError: (e) => toast.error(e.message) }));
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
-        <DialogHeader><DialogTitle>Add team member</DialogTitle><DialogDescription>Invites and sign-in arrive with auth. For now this creates the member so work can be assigned.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Invite a team member</DialogTitle><DialogDescription>We&apos;ll email them an invite. Work can be assigned to them right away; they show as Invited until they sign in.</DialogDescription></DialogHeader>
         <div className="grid grid-cols-2 gap-3">
-          <div className="grid gap-1"><Label>Name</Label><Input autoFocus value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
-          <div className="grid gap-1"><Label>Email</Label><Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+          <div className="grid gap-1"><Label>Email</Label><Input autoFocus type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} /></div>
+          <div className="grid gap-1"><Label>Name <span className="font-normal text-muted-foreground">· optional</span></Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="They can set it later" /></div>
           <div className="grid gap-1"><Label>Role</Label>
             <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v as MemberRole })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{MEMBER_ROLES.map((r) => <SelectItem key={r} value={r}>{MEMBER_ROLE_LABELS[r]}</SelectItem>)}</SelectContent></Select>
           </div>
@@ -118,7 +127,7 @@ function AddMemberDialog({ open, onOpenChange, onDone }: { open: boolean; onOpen
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button disabled={!form.name.trim() || !/.+@.+\..+/.test(form.email) || add.isPending} onClick={() => add.mutate({ workspace: ws.slug, name: form.name.trim(), email: form.email.trim(), role: form.role, permission: form.permission, title: form.title || undefined, company: form.company || undefined, isExternal: form.isExternal })}>Add</Button>
+          <Button disabled={!/.+@.+\..+/.test(form.email) || add.isPending} onClick={() => add.mutate({ workspace: ws.slug, name: form.name.trim() || undefined, email: form.email.trim(), role: form.role, permission: form.permission, title: form.title || undefined, company: form.company || undefined, isExternal: form.isExternal })}>Add</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

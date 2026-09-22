@@ -13,6 +13,8 @@
     "@fletcher/api": "workspace:*",
     "@fletcher/core": "workspace:*",
     "@fletcher/db": "workspace:*",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
     "@tanstack/react-query": "^5.103.1",
     "@tiptap/extension-link": "3.31.3",
     "@tiptap/extension-mention": "3.31.3",

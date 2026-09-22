@@ -1,19 +1,5 @@
 import { relations, sql } from "drizzle-orm";
-import {
-  boolean,
-  check,
-  date,
-  index,
-  integer,
-  jsonb,
-  pgEnum,
-  pgTable,
-  real,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { bigint, boolean, check, date, index, integer, jsonb, pgEnum, pgTable, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import {
   DELIVERABLE_KINDS,
   DELIVERABLE_STATUSES,
@@ -50,6 +36,10 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
   avatarUrl: text("avatar_url"),
+  /** Supabase auth user id. Null until the person signs in for the first time; matched by email then. */
+  authId: uuid("auth_id").unique(),
+  /** When an invite email was last sent — shows "Invited" on the Team page until they sign in. */
+  invitedAt: timestamp("invited_at", { withTimezone: true }),
   ...timestamps,
 });
 
@@ -59,7 +49,9 @@ export const workspaces = pgTable("workspaces", {
   name: text("name").notNull(),
   artistName: text("artist_name").notNull(),
   timezone: text("timezone").notNull().default("America/Chicago"),
+  /** Storage tier: free (2 GB), paid (100 GB) or custom (see customQuotaGb). Billing lands later. */
   plan: text("plan").notNull().default("free"),
+  customQuotaGb: integer("custom_quota_gb"),
   ...timestamps,
 });
 
@@ -139,6 +131,92 @@ export const deliverables = pgTable(
   (t) => [index("deliverables_project_idx").on(t.projectId), index("deliverables_workspace_idx").on(t.workspaceId)],
 );
 
+export const connectionProviderEnum = pgEnum("connection_provider", ["google_drive", "box"]);
+
+/**
+ * A person's link to their own cloud account. Per user, not per workspace: the
+ * connection is a convenience for whoever is picking files, never a shared
+ * credential. Tokens are encrypted with CONNECTIONS_ENCRYPTION_KEY before
+ * they get here.
+ */
+export const userConnections = pgTable(
+  "user_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    provider: connectionProviderEnum("provider").notNull(),
+    providerAccountId: text("provider_account_id"),
+    /** What to show: the account's email or display name. */
+    accountLabel: text("account_label"),
+    accessTokenEnc: text("access_token_enc").notNull(),
+    accessTokenExpiresAt: timestamp("access_token_expires_at", { withTimezone: true }),
+    refreshTokenEnc: text("refresh_token_enc"),
+    scopes: text("scopes").array().notNull().default(sql`'{}'::text[]`),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("user_connections_unique").on(t.userId, t.provider)],
+);
+
+export const fileStatusEnum = pgEnum("file_status", ["pending", "importing", "ready", "failed"]);
+export const fileOriginEnum = pgEnum("file_origin", ["upload", "seed", "google_drive", "dropbox", "box", "share_link"]);
+
+/**
+ * Every object in the workspace's storage, whatever put it there. Versions and
+ * attachments point at a row here; usage is the sum of `bytes` over rows that
+ * are (or are about to be) real objects. `pending` rows are upload reservations
+ * that count toward quota until they finalize or get swept.
+ */
+export const workspaceFiles = pgTable(
+  "workspace_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    storageKey: text("storage_key").notNull().unique(),
+    fileName: text("file_name").notNull(),
+    mimeType: text("mime_type").notNull(),
+    bytes: bigint("bytes", { mode: "number" }).notNull().default(0),
+    width: integer("width"),
+    height: integer("height"),
+    durationSeconds: real("duration_seconds"),
+    status: fileStatusEnum("status").notNull().default("pending"),
+    origin: fileOriginEnum("origin").notNull().default("upload"),
+    /** Where an import came from, for the Files tab. */
+    originUrl: text("origin_url"),
+    uploadedByMemberId: uuid("uploaded_by_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+  },
+  (t) => [index("workspace_files_ws_status_idx").on(t.workspaceId, t.status), index("workspace_files_ws_created_idx").on(t.workspaceId, t.createdAt)],
+);
+
+export const importJobStatusEnum = pgEnum("import_job_status", ["queued", "running", "done", "failed"]);
+
+/**
+ * A copy-into-Fletcher job. The file row exists (status importing) from the
+ * moment the job is queued so the version/attachment can show progress; the
+ * job row is what the runner claims, retries, and reports through.
+ */
+export const importJobs = pgTable(
+  "import_jobs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    fileId: uuid("file_id").notNull().references(() => workspaceFiles.id, { onDelete: "cascade" }),
+    requestedByMemberId: uuid("requested_by_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),
+    /** Whose cloud connection to use (picked files); null for public share links. */
+    requestedByUserId: uuid("requested_by_user_id").references(() => users.id, { onDelete: "set null" }),
+    source: jsonb("source").notNull(),
+    status: importJobStatusEnum("status").notNull().default("queued"),
+    progressBytes: bigint("progress_bytes", { mode: "number" }).notNull().default(0),
+    totalBytes: bigint("total_bytes", { mode: "number" }),
+    attempts: integer("attempts").notNull().default(0),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    error: text("error"),
+    ...timestamps,
+  },
+  (t) => [index("import_jobs_status_idx").on(t.status, t.lockedAt)],
+);
+
 export const deliverableVersions = pgTable(
   "deliverable_versions",
   {
@@ -149,9 +227,11 @@ export const deliverableVersions = pgTable(
     url: text("url"),
     externalId: text("external_id"),
     storageKey: text("storage_key"),
+    /** The stored object behind an upload; null for link versions. */
+    fileId: uuid("file_id").references(() => workspaceFiles.id, { onDelete: "set null" }),
     fileName: text("file_name"),
     mimeType: text("mime_type"),
-    bytes: integer("bytes"),
+    bytes: bigint("bytes", { mode: "number" }),
     width: integer("width"),
     height: integer("height"),
     durationSeconds: real("duration_seconds"),
@@ -216,9 +296,10 @@ export const taskAttachments = pgTable(
     url: text("url"),
     title: text("title"),
     storageKey: text("storage_key"),
+    fileId: uuid("file_id").references(() => workspaceFiles.id, { onDelete: "set null" }),
     fileName: text("file_name"),
     mimeType: text("mime_type"),
-    bytes: integer("bytes"),
+    bytes: bigint("bytes", { mode: "number" }),
     addedByMemberId: uuid("added_by_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),
     sortOrder: integer("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
