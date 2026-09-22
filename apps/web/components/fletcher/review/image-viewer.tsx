@@ -62,8 +62,8 @@ export const ImageViewer = forwardRef<AnnotatedViewerHandle, {
       // zooming past 100% is still available from the toolbar.
       maxFitZoom={1}
       status={
-        error ? <div className="flex h-80 items-center justify-center px-6 text-center text-xs text-destructive">Could not load this image.</div>
-        : !baseSize ? <div className="flex h-80 items-center justify-center gap-2 text-xs text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading image…</div>
+        error ? <div className="flex flex-1 items-center justify-center px-6 text-center text-xs text-destructive">Could not load this image.</div>
+        : !baseSize ? <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading image…</div>
         : null
       }
     >
@@ -76,7 +76,7 @@ export const ImageViewer = forwardRef<AnnotatedViewerHandle, {
           draggable={false}
           width={size.w}
           height={size.h}
-          className="block select-none rounded-sm bg-white"
+          className="block max-w-none select-none rounded-sm bg-white"
           style={{ width: size.w, height: size.h }}
         />
       )}

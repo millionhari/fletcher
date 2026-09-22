@@ -249,6 +249,37 @@ export const comments = pgTable(
   ],
 );
 
+/**
+ * One row per person tagged with @ in a comment or a task doc — what feeds each
+ * member's Mentions page. The target ids are denormalized (a comment already
+ * knows its task) so the page lists without walking comment → version →
+ * deliverable, and so every row disappears with the thing it points at.
+ */
+export const mentions = pgTable(
+  "mentions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    workspaceId: uuid("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+    mentionedMemberId: uuid("mentioned_member_id").notNull().references(() => workspaceMembers.id, { onDelete: "cascade" }),
+    actorMemberId: uuid("actor_member_id").references(() => workspaceMembers.id, { onDelete: "set null" }),
+    /** "comment" or "task_doc". */
+    source: text("source").notNull(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }),
+    taskId: uuid("task_id").references(() => tasks.id, { onDelete: "cascade" }),
+    deliverableId: uuid("deliverable_id").references(() => deliverables.id, { onDelete: "cascade" }),
+    commentId: uuid("comment_id").references(() => comments.id, { onDelete: "cascade" }),
+    /** Stored body of the comment (mention tokens intact), or the start of the doc text. */
+    excerpt: text("excerpt").notNull().default(""),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("mentions_member_idx").on(t.mentionedMemberId, t.readAt),
+    index("mentions_task_idx").on(t.taskId),
+    index("mentions_comment_idx").on(t.commentId),
+  ],
+);
+
 export const commsPlans = pgTable("comms_plans", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id").notNull().references(() => projects.id, { onDelete: "cascade" }).unique(),

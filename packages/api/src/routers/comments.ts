@@ -1,10 +1,11 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { anchorPage, commentAnchorSchema } from "@fletcher/core";
+import { anchorPage, commentAnchorSchema, parseMentions } from "@fletcher/core";
 import { activityLog, comments, deliverableVersions, deliverables, projects, tasks, users, workspaceMembers } from "@fletcher/db";
 import type { Db } from "@fletcher/db";
 import { TRPCError } from "@trpc/server";
 import { router, workspaceProcedure } from "../trpc";
+import { recordMentions } from "../mentions";
 
 async function loadVersion(ctx: { db: Db; workspace: { id: string } }, versionId: string) {
   const v = await ctx.db.query.deliverableVersions.findFirst({ where: eq(deliverableVersions.id, versionId) });
@@ -59,6 +60,7 @@ export const commentsRouter = router({
           .values({ taskId: task.id, authorMemberId: ctx.member.id, body: input.body, parentCommentId: input.parentCommentId ?? null })
           .returning();
         await ctx.db.insert(activityLog).values({ workspaceId: ctx.workspace.id, projectId: task.projectId, taskId: task.id, actorMemberId: ctx.member.id, type: "comment.added", payload: { title: task.title, taskId: task.id } });
+        await recordMentions(ctx, parseMentions(input.body).map((m) => m.memberId), { source: "comment", projectId: task.projectId, taskId: task.id, commentId: c!.id, excerpt: input.body });
         return c!;
       }
       const { deliverable } = await loadVersion(ctx, input.versionId!);
@@ -73,6 +75,7 @@ export const commentsRouter = router({
         type: "comment.added",
         payload: { title: deliverable.title, timestamp: input.timestampSeconds ?? null, page: input.anchor ? anchorPage(input.anchor) : null, deliverableId: deliverable.id },
       });
+      await recordMentions(ctx, parseMentions(input.body).map((m) => m.memberId), { source: "comment", projectId: deliverable.projectId, deliverableId: deliverable.id, commentId: c!.id, excerpt: input.body });
       return c!;
     }),
 

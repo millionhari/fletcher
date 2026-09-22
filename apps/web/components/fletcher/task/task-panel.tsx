@@ -54,7 +54,7 @@ export function TaskPanel({ taskId, mode, onClose, onNavigate }: TaskPanelProps)
     ]);
   }, [qc, trpc, ws.slug, taskId]);
 
-  const saveDoc = useMutation(trpc.taskDetail.saveDoc.mutationOptions({ onSuccess: (r) => setSavedAt(new Date(r.savedAt)), onError: (e) => toast.error(e.message) }));
+  const saveDoc = useMutation(trpc.taskDetail.saveDoc.mutationOptions({ onSuccess: (r) => { setSavedAt(new Date(r.savedAt)); void qc.invalidateQueries({ queryKey: trpc.mentions.pathKey() }); }, onError: (e) => toast.error(e.message) }));
   const rename = useMutation(trpc.taskDetail.rename.mutationOptions({ onSuccess: invalidate, onError: (e) => toast.error(e.message) }));
   const update = useMutation(trpc.tasks.update.mutationOptions({ onSuccess: invalidate, onError: (e) => toast.error(e.message) }));
   const del = useMutation(trpc.tasks.delete.mutationOptions({ onSuccess: async () => { await invalidate(); toast.success("Task deleted"); onClose?.(); }, onError: (e) => toast.error(e.message) }));

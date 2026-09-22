@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { CalendarDays, ChevronsUpDown, FolderKanban, Images, LayoutGrid, LayoutTemplate, Moon, Plus, Search, Sun, Users } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { AtSign, CalendarDays, ChevronsUpDown, FolderKanban, Images, LayoutGrid, LayoutTemplate, Moon, Plus, Search, Sun, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTRPC } from "@/lib/trpc/client";
 import { PROJECT_TYPE_LABELS, type ProjectType } from "@fletcher/core";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/fletcher/kbd";
@@ -31,6 +33,9 @@ export function Sidebar({ workspace, workspaces, projects, userName }: { workspa
   const pathname = usePathname();
   const base = `/w/${workspace.slug}`;
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const trpc = useTRPC();
+  // Polled so a tag from a teammate shows up without a reload.
+  const unreadMentions = useQuery({ ...trpc.mentions.unreadCount.queryOptions({ workspace: workspace.slug }), refetchInterval: 60_000 });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -46,6 +51,7 @@ export function Sidebar({ workspace, workspaces, projects, userName }: { workspa
   const nav = [
     { href: base, label: "Overview", icon: LayoutGrid, exact: true },
     { href: `${base}/projects`, label: "Projects", icon: FolderKanban },
+    { href: `${base}/mentions`, label: "Mentions", icon: AtSign, badge: unreadMentions.data ?? 0 },
     { href: `${base}/calendar`, label: "Calendar", icon: CalendarDays },
     { href: `${base}/assets`, label: "Profile kit", icon: Images },
     { href: `${base}/team`, label: "Team", icon: Users },
@@ -97,6 +103,7 @@ export function Sidebar({ workspace, workspaces, projects, userName }: { workspa
             <Link key={item.href} href={item.href} className={cn("flex h-8 items-center gap-2.5 rounded-lg px-2 text-[13px] font-medium transition-colors", active ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground")}>
               <item.icon className={cn("size-4", active ? "text-foreground" : "text-muted-foreground")} />
               {item.label}
+              {!!item.badge && <span className="tabular ml-auto rounded-md bg-brand px-1.5 text-2xs font-semibold leading-4 text-brand-foreground" aria-label={`${item.badge} unread`}>{item.badge}</span>}
             </Link>
           );
         })}

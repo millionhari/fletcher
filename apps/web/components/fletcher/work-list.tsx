@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, ChevronDown, FolderKanban, ListTodo, Megaphone, Users } from "lucide-react";
 import { toast } from "sonner";
@@ -15,9 +16,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { SectionHeader } from "@/components/fletcher/page-header";
 import { TaskStatusBadge } from "@/components/fletcher/status-badge";
 import { MemberAvatar } from "@/components/fletcher/member-avatar";
+import { FilterChip, chipClass } from "@/components/fletcher/filter-chip";
 
 
 type Filter = { kind: "mine" } | { kind: "everyone" } | { kind: "member"; id: string; name: string };
@@ -32,6 +33,16 @@ export function WorkList() {
   const [showDone, setShowDone] = usePersistedState<boolean>(`fletcher:${ws.slug}:work-show-done`, true);
   const [projectId, setProjectId] = usePersistedState<string | null>(`fletcher:${ws.slug}:work-project`, null);
   const projects = useQuery(trpc.projects.list.queryOptions({ workspace: ws.slug, includeArchived: false }));
+  // `?person=<memberId>` (from a member hover card) selects that person once, then drops out of the URL.
+  const params = useSearchParams();
+  const router = useRouter();
+  const wantedPerson = params.get("person");
+  useEffect(() => {
+    if (!wantedPerson || !members.data) return;
+    const m = members.data.find((x) => x.id === wantedPerson);
+    if (m) setFilter(m.id === ws.memberId ? { kind: "mine" } : { kind: "member", id: m.id, name: m.name });
+    router.replace(`/w/${ws.slug}`, { scroll: false });
+  }, [wantedPerson, members.data, setFilter, router, ws.slug, ws.memberId]);
   const selectedProject = (projects.data ?? []).find((p) => p.id === projectId) ?? null;
   const memberId = filter.kind === "mine" ? ws.memberId : filter.kind === "member" ? filter.id : null;
   const q = useQuery({ ...trpc.dashboard.workFor.queryOptions({ workspace: ws.slug, memberId, includeDone: showDone }), enabled: hydrated });
@@ -79,17 +90,19 @@ export function WorkList() {
   const label = filter.kind === "mine" ? "My work" : filter.kind === "everyone" ? "Everyone's work" : `${filter.name.split(" ")[0]}'s work`;
 
   return (
-    <section>
-      <SectionHeader
-        title={<span className="flex items-center gap-1.5"><ListTodo className="size-3.5" />{label}</span>}
-        count={q.data ? visible.length : undefined}
-        actions={
-          <div className="flex items-center gap-1">
-            <label className="mr-2 flex items-center gap-1.5 text-2xs text-muted-foreground"><Switch checked={showDone} onCheckedChange={setShowDone} className="scale-75" />Show done</label>
+    <section className="@container">
+      {/* Title + "Show done" share the first line; the filter chips join it only when the column is wide enough. */}
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          <span className="flex items-center gap-1.5"><ListTodo className="size-3.5" />{label}</span>
+          {q.data && <span className="tabular rounded-md bg-muted px-1.5 py-px text-2xs font-medium">{visible.length}</span>}
+        </h2>
+        <label className="ml-auto flex items-center gap-1.5 whitespace-nowrap text-2xs text-muted-foreground"><Switch checked={showDone} onCheckedChange={setShowDone} className="scale-75" />Show done</label>
+        <div className="flex basis-full flex-wrap items-center gap-1 @[640px]:basis-auto">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className={cn(chipClass(!!selectedProject), "mr-2")}>
-                  {selectedProject ? <><span className="size-2 rounded-[3px]" style={{ background: selectedProject.color }} />{selectedProject.name}</> : <><FolderKanban className="size-3.5" />All projects</>}
+                  {selectedProject ? <><span className="size-2 shrink-0 rounded-[3px]" style={{ background: selectedProject.color }} /><span className="max-w-[120px] truncate">{selectedProject.name}</span></> : <><FolderKanban className="size-3.5" />All projects</>}
                   <ChevronDown className="size-3" />
                 </button>
               </DropdownMenuTrigger>
@@ -110,7 +123,7 @@ export function WorkList() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className={chipClass(filter.kind === "member")}>
-                  {filter.kind === "member" ? <><MemberAvatar name={filter.name} size="xs" showTooltip={false} className="size-4 text-[8px] ring-0" />{filter.name.split(" ")[0]}</> : "Person"}
+                  {filter.kind === "member" ? <><MemberAvatar name={filter.name} size="xs" showTooltip={false} className="size-4 text-[8px] ring-0" /><span className="max-w-[96px] truncate">{filter.name.split(" ")[0]}</span></> : "Person"}
                   <ChevronDown className="size-3" />
                 </button>
               </DropdownMenuTrigger>
@@ -127,9 +140,8 @@ export function WorkList() {
                 <DropdownMenuItem onClick={() => setFilter({ kind: "mine" })}>Back to mine</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
-          </div>
-        }
-      />
+        </div>
+      </div>
       {q.isLoading || !q.data ? (
         <Skeleton className="h-40 rounded-xl" />
       ) : visible.length === 0 ? (
@@ -183,17 +195,5 @@ export function WorkList() {
         </>
       )}
     </section>
-  );
-}
-
-function chipClass(active: boolean): string {
-  return cn("box-border inline-flex h-7 shrink-0 items-center gap-1.5 rounded-lg border px-2 py-0 text-xs font-medium leading-none transition-colors", active ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground hover:text-foreground");
-}
-
-function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button onClick={onClick} className={chipClass(active)}>
-      {children}
-    </button>
   );
 }

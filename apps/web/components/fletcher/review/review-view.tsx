@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
 import { fmtBytes } from "@/lib/format";
-import { anchorColor, anchorPage, DELIVERABLE_STATUS_LABELS, formatTimestamp, parseVideoLink, type CommentAnchor, type DeliverableKind, type DeliverableStatus } from "@fletcher/core";
+import { anchorDisplayColor, anchorPage, DELIVERABLE_STATUS_LABELS, formatTimestamp, parseVideoLink, type CommentAnchor, type DeliverableKind, type DeliverableStatus } from "@fletcher/core";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspace } from "@/lib/hooks/use-workspace";
 import { Button } from "@/components/ui/button";
@@ -113,12 +113,20 @@ function useAnnotationBoxes(list: { id: string; anchor?: unknown; parentCommentI
         .filter((c) => !c.parentCommentId)
         .flatMap((c) => {
           const a = readAnchor(c.anchor);
-          return a ? [{ id: c.id, page: anchorPage(a), rect: a.rect, color: anchorColor(c.id), resolved: !!c.resolvedAt }] : [];
+          return a ? [{ id: c.id, page: anchorPage(a), rect: a.rect, color: anchorDisplayColor(c.id, a), resolved: !!c.resolvedAt, strokes: a.strokes }] : [];
         })
         .sort((x, y) => x.page - y.page || x.rect.y - y.rect.y)
         .map((b, i) => ({ ...b, index: i + 1 })),
     [list],
   );
+}
+
+/** Per-comment "hide this markup" state; the surface only ever sees the visible boxes. */
+function useHiddenBoxes(boxes: AnnotationBox[]) {
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set());
+  const toggle = (id: string) => setHidden((h) => { const n = new Set(h); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const visible = useMemo(() => boxes.filter((b) => !hidden.has(b.id)), [boxes, hidden]);
+  return { hidden, toggle, visible };
 }
 
 export function ReviewView({ deliverableId }: { deliverableId: string }) {
@@ -274,6 +282,7 @@ function ImageReview({ version, invalidate }: { version: MediaVersion; invalidat
   const comments = useQuery(trpc.comments.listByVersion.queryOptions({ workspace: ws.slug, versionId: version.id }));
   const list = useMemo(() => comments.data ?? [], [comments.data]);
   const boxes = useAnnotationBoxes(list);
+  const { hidden, toggle: toggleHidden, visible: visibleBoxes } = useHiddenBoxes(boxes);
   const [draft, setDraft] = useState<CommentAnchor | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const viewerRef = useRef<AnnotatedViewerHandle>(null);
@@ -293,12 +302,12 @@ function ImageReview({ version, invalidate }: { version: MediaVersion; invalidat
           ref={viewerRef}
           url={url}
           alt={version.fileName ?? "asset"}
-          boxes={boxes}
+          boxes={visibleBoxes}
           activeId={activeId}
-          draft={draft ? { page: 1, rect: draft.rect } : null}
+          draft={draft ? { page: 1, rect: draft.rect, strokes: draft.strokes } : null}
           onHoverBox={setActiveId}
           onSelectBox={selectBox}
-          onDraft={(d) => setDraft(d ? { kind: "image", rect: d.rect } : null)}
+          onDraft={(d) => setDraft(d ? { kind: "image", rect: d.rect, strokes: d.strokes } : null)}
         />
         {version.note && <p className="mt-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">{version.uploaderName ?? "Uploader"}:</span> {version.note}</p>}
       </div>
@@ -311,6 +320,8 @@ function ImageReview({ version, invalidate }: { version: MediaVersion; invalidat
         onHoverComment={setActiveId}
         onSelectComment={(a, id) => { setActiveId(id); viewerRef.current?.revealAnchor(1, a.rect); }}
         anchorIndex={indexById(boxes)}
+        hiddenIds={hidden}
+        onToggleHidden={toggleHidden}
         invalidate={invalidate}
         timeCoded={false}
       />
@@ -335,6 +346,7 @@ function PdfReview({ version, invalidate }: { version: MediaVersion; invalidate:
   const [activeId, setActiveId] = useState<string | null>(null);
 
   const boxes = useAnnotationBoxes(list);
+  const { hidden, toggle: toggleHidden, visible: visibleBoxes } = useHiddenBoxes(boxes);
 
   // Clicking a box scrolls its card into view; clicking a card pages the document.
   const selectBox = (id: string) => {
@@ -355,12 +367,12 @@ function PdfReview({ version, invalidate }: { version: MediaVersion; invalidate:
         <PdfViewer
           ref={viewerRef}
           url={url}
-          boxes={boxes}
+          boxes={visibleBoxes}
           activeId={activeId}
-          draft={draft ? { page: anchorPage(draft), rect: draft.rect } : null}
+          draft={draft ? { page: anchorPage(draft), rect: draft.rect, strokes: draft.strokes } : null}
           onHoverBox={setActiveId}
           onSelectBox={selectBox}
-          onDraft={(d) => setDraft(d ? { kind: "pdf", page: d.page, rect: d.rect } : null)}
+          onDraft={(d) => setDraft(d ? { kind: "pdf", page: d.page, rect: d.rect, strokes: d.strokes } : null)}
         />
         {version.note && <p className="mt-2 text-xs text-muted-foreground"><span className="font-medium text-foreground">{version.uploaderName ?? "Uploader"}:</span> {version.note}</p>}
       </div>
@@ -373,6 +385,8 @@ function PdfReview({ version, invalidate }: { version: MediaVersion; invalidate:
         onHoverComment={setActiveId}
         onSelectComment={selectComment}
         anchorIndex={indexById(boxes)}
+        hiddenIds={hidden}
+        onToggleHidden={toggleHidden}
         invalidate={invalidate}
         timeCoded={false}
       />

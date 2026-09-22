@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TaskStatusBadge } from "@/components/fletcher/status-badge";
 import { MemberAvatar } from "@/components/fletcher/member-avatar";
+import { MemberHoverCard } from "@/components/fletcher/member-hover-card";
 import { RolePill } from "@/components/fletcher/role-pill";
 import { useState } from "react";
 
@@ -55,10 +56,12 @@ export function AssigneePicker({ taskId, assigneeMemberId, assigneeName, roleKey
   const others = list.filter((m) => m.role !== roleKey);
   return (
     <DropdownMenu>
+      <MemberHoverCard memberId={assigneeMemberId}>
       <DropdownMenuTrigger className="group/assignee flex cursor-pointer items-center gap-1.5 rounded-full outline-none focus:outline-none focus-visible:outline-none [&>span:first-child]:transition-[filter] hover:[&>span:first-child]:brightness-90 dark:hover:[&>span:first-child]:brightness-125" aria-label="Assign" title="Assign">
         <MemberAvatar name={assigneeName} size={compact ? "xs" : "sm"} showTooltip={false} />
         {!compact && <span className="text-xs">{assigneeName ?? <span className="text-muted-foreground">Unassigned</span>}</span>}
       </DropdownMenuTrigger>
+      </MemberHoverCard>
       <DropdownMenuContent align="end" className="w-56">
         {suggested.length > 0 && (
           <>

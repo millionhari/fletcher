@@ -10,12 +10,13 @@ function hue(seed: string): string {
   return HUES[h % HUES.length]!;
 }
 
-export function MemberAvatar({ name, size = "sm", className, showTooltip = true }: { name: string | null | undefined; size?: "xs" | "sm" | "md" | "lg"; className?: string; showTooltip?: boolean }) {
+export function MemberAvatar({ name, avatarUrl, size = "sm", className, showTooltip = true }: { name: string | null | undefined; avatarUrl?: string | null; size?: "xs" | "sm" | "md" | "lg"; className?: string; showTooltip?: boolean }) {
   const sizes = { xs: "size-5 text-[9px]", sm: "size-6 text-[10px]", md: "size-8 text-xs", lg: "size-10 text-sm" };
   const label = name ?? "Unassigned";
   const el = (
-    <span className={cn("inline-flex shrink-0 select-none items-center justify-center rounded-full font-semibold ring-2 ring-background", sizes[size], name ? hue(name) : "bg-muted text-muted-foreground border border-dashed border-border", className)} aria-label={label}>
-      {name ? initials(name) : "·"}
+    <span className={cn("inline-flex shrink-0 select-none items-center justify-center overflow-hidden rounded-full font-semibold ring-2 ring-background", sizes[size], name ? hue(name) : "bg-muted text-muted-foreground border border-dashed border-border", className)} aria-label={label}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- avatars come from arbitrary hosts */}
+      {name && avatarUrl ? <img src={avatarUrl} alt="" className="size-full object-cover" /> : name ? initials(name) : "·"}
     </span>
   );
   if (!showTooltip) return el;

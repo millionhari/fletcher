@@ -1,11 +1,12 @@
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
-import { timelineTemplateDefSchema } from "@fletcher/core";
-import { activityLog, comments, deliverableVersions, deliverables, projects, taskAttachments, taskChecklistItems, tasks, templates, users, workspaceMembers } from "@fletcher/db";
+import { docMentionIds, timelineTemplateDefSchema } from "@fletcher/core";
+import { activityLog, comments, deliverableVersions, deliverables, mentions, projects, taskAttachments, taskChecklistItems, tasks, templates, users, workspaceMembers } from "@fletcher/db";
 import type { Db } from "@fletcher/db";
 import { TRPCError } from "@trpc/server";
 import { router, workspaceProcedure } from "../trpc";
 import { storage } from "../storage";
+import { recordMentions } from "../mentions";
 
 export async function loadTaskInWorkspace(ctx: { db: Db; workspace: { id: string } }, taskId: string) {
   const row = await ctx.db
@@ -104,6 +105,15 @@ export const taskDetailRouter = router({
       const { task } = await loadTaskInWorkspace(ctx, input.taskId);
       const now = new Date();
       await ctx.db.update(tasks).set({ doc: input.doc as object, docText: input.docText.slice(0, 500), docUpdatedAt: now, updatedAt: now }).where(eq(tasks.id, task.id));
+      // The doc is saved over and over, so its mentions are reconciled rather
+      // than appended: someone newly tagged is notified once, re-saving never
+      // re-pings anyone already in it, and removing a tag withdraws the mention.
+      const tagged = docMentionIds(input.doc);
+      const existing = await ctx.db.select({ id: mentions.id, memberId: mentions.mentionedMemberId }).from(mentions).where(and(eq(mentions.taskId, task.id), eq(mentions.source, "task_doc")));
+      const removed = existing.filter((m) => !tagged.includes(m.memberId)).map((m) => m.id);
+      if (removed.length) await ctx.db.delete(mentions).where(inArray(mentions.id, removed));
+      const known = new Set(existing.map((m) => m.memberId));
+      await recordMentions(ctx, tagged.filter((id) => !known.has(id)), { source: "task_doc", projectId: task.projectId, taskId: task.id, excerpt: input.docText });
       return { savedAt: now };
     }),
 

@@ -2,23 +2,25 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
-import { ArrowUpRight, Check, CheckCircle2, CornerDownRight, MessageSquare, RotateCcw, SquareDashed, Trash2, X } from "lucide-react";
+import { ArrowUpRight, Check, CheckCircle2, CornerDownRight, Eye, EyeOff, MessageSquare, PenLine, RotateCcw, SquareDashed, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNowStrict } from "date-fns";
 import { cn } from "@/lib/utils";
-import { anchorColor, anchorPage, commentAnchorSchema, formatTimestamp, type CommentAnchor } from "@fletcher/core";
+import { anchorDisplayColor, anchorPage, commentAnchorSchema, encodeMentions, formatTimestamp, type CommentAnchor, type MentionRef } from "@fletcher/core";
 import { useTRPC } from "@/lib/trpc/client";
 import { useWorkspace } from "@/lib/hooks/use-workspace";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { MemberAvatar } from "@/components/fletcher/member-avatar";
+import { MentionTextarea } from "@/components/fletcher/mentions/mention-textarea";
+import { MentionText } from "@/components/fletcher/mentions/mention-text";
 
 export type CommentRow = { id: string; body: string; timestampSeconds: number | null; anchor?: unknown; parentCommentId: string | null; resolvedAt: Date | null; createdAt: Date; authorName: string | null; authorRole: string | null };
 
 /** Where the pin sits, spelled out — the marker already carries the identity. */
 function anchorLabel(a: CommentAnchor): string {
-  return a.kind === "pdf" ? `Page ${a.page}` : "Region";
+  const what = a.strokes ? "Drawing" : "Region";
+  return a.kind === "pdf" ? `${what} · p.${a.page}` : what;
 }
 
 /**
@@ -48,15 +50,18 @@ export function readAnchor(value: unknown): CommentAnchor | null {
 export type CommentTarget = { versionId: string; taskId?: undefined } | { taskId: string; versionId?: undefined };
 
 /** Threaded comment list + composer. Works for a deliverable version (optionally time-coded) or a task. */
-export function CommentThread({ target, comments, activeId = null, onSeek = () => {}, getTime = () => Promise.resolve(0), pause = () => {}, invalidate, timeCoded, className, variant = "card", draftAnchor = null, onClearDraftAnchor, onHoverComment, onSelectComment, anchorIndex }: { target: CommentTarget; comments: CommentRow[]; activeId?: string | null; onSeek?: (s: number) => void; getTime?: () => Promise<number>; pause?: () => void; invalidate: () => Promise<void>; timeCoded: boolean; className?: string;
+export function CommentThread({ target, comments, activeId = null, onSeek = () => {}, getTime = () => Promise.resolve(0), pause = () => {}, invalidate, timeCoded, className, variant = "card", draftAnchor = null, onClearDraftAnchor, onHoverComment, onSelectComment, anchorIndex, hiddenIds, onToggleHidden }: { target: CommentTarget; comments: CommentRow[]; activeId?: string | null; onSeek?: (s: number) => void; getTime?: () => Promise<number>; pause?: () => void; invalidate: () => Promise<void>; timeCoded: boolean; className?: string;
   /** "card" is the review sidebar rail; "inline" sits in a page column beside other flat sections. */
   variant?: "card" | "inline"; draftAnchor?: CommentAnchor | null; onClearDraftAnchor?: () => void; onHoverComment?: (id: string | null) => void; onSelectComment?: (anchor: CommentAnchor, id: string) => void;
   /** Comment id → the marker number drawn on the document. */
-  anchorIndex?: Map<string, number> }) {
+  anchorIndex?: Map<string, number>;
+  /** Pinned comments whose markup is hidden on the document, with the toggle. */
+  hiddenIds?: Set<string>; onToggleHidden?: (id: string) => void }) {
   const ws = useWorkspace();
   const trpc = useTRPC();
   const qc = useQueryClient();
   const [body, setBody] = useState("");
+  const [picked, setPicked] = useState<MentionRef[]>([]);
   const [pin, setPin] = useState(timeCoded);
   const [pinned, setPinned] = useState<number | null>(null);
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -64,9 +69,10 @@ export function CommentThread({ target, comments, activeId = null, onSeek = () =
   const refresh = async () => {
     if (target.versionId) await qc.invalidateQueries({ queryKey: trpc.comments.listByVersion.queryKey({ workspace: ws.slug, versionId: target.versionId }) });
     else await qc.invalidateQueries({ queryKey: trpc.comments.listByTask.queryKey({ workspace: ws.slug, taskId: target.taskId }) });
+    await qc.invalidateQueries({ queryKey: trpc.mentions.pathKey() });
     await invalidate();
   };
-  const add = useMutation(trpc.comments.add.mutationOptions({ onSuccess: async () => { setBody(""); setPinned(null); setReplyTo(null); onClearDraftAnchor?.(); await refresh(); }, onError: (e) => toast.error(e.message) }));
+  const add = useMutation(trpc.comments.add.mutationOptions({ onSuccess: async () => { setBody(""); setPicked([]); setPinned(null); setReplyTo(null); onClearDraftAnchor?.(); await refresh(); }, onError: (e) => toast.error(e.message) }));
   const resolve = useMutation(trpc.comments.resolve.mutationOptions({ onSuccess: refresh, onError: (e) => toast.error(e.message) }));
   const del = useMutation(trpc.comments.delete.mutationOptions({ onSuccess: refresh, onError: (e) => toast.error(e.message) }));
 
@@ -91,7 +97,7 @@ export function CommentThread({ target, comments, activeId = null, onSeek = () =
   };
   const submit = () => {
     if (!body.trim()) return;
-    add.mutate({ workspace: ws.slug, ...(target.versionId ? { versionId: target.versionId } : { taskId: target.taskId }), body: body.trim(), timestampSeconds: replyTo || !target.versionId ? null : pin && pinned != null ? pinned : null, anchor: replyTo ? null : draftAnchor, parentCommentId: replyTo });
+    add.mutate({ workspace: ws.slug, ...(target.versionId ? { versionId: target.versionId } : { taskId: target.taskId }), body: encodeMentions(body.trim(), picked), timestampSeconds: replyTo || !target.versionId ? null : pin && pinned != null ? pinned : null, anchor: replyTo ? null : draftAnchor, parentCommentId: replyTo });
   };
 
   const inline = variant === "inline";
@@ -106,7 +112,7 @@ export function CommentThread({ target, comments, activeId = null, onSeek = () =
         <label className="flex items-center gap-1.5 text-2xs text-muted-foreground"><Switch checked={showResolved} onCheckedChange={setShowResolved} className="scale-75" />Resolved</label>
       </div>
       <div className={cn(inline ? "rounded-lg border border-border [&>div:last-child]:border-b-0" : "scrollbar-thin flex-1 overflow-y-auto")}>
-        {roots.length === 0 && <p className="px-4 py-8 text-center text-xs text-muted-foreground">No comments yet. {timeCoded ? "Pause where you want to leave a note and start typing." : onSelectComment ? "Drag a box over the part of the page you want to talk about." : "Leave the first note."}</p>}
+        {roots.length === 0 && <p className="px-4 py-8 text-center text-xs text-muted-foreground">No comments yet. {timeCoded ? "Pause where you want to leave a note and start typing." : onSelectComment ? "Draw on the page or drag a box over the part you want to talk about." : "Leave the first note."}</p>}
         {roots.map((c) => {
           const anchor = readAnchor(c.anchor);
           const jump = anchor && onSelectComment ? () => onSelectComment(anchor, c.id) : null;
@@ -128,18 +134,30 @@ export function CommentThread({ target, comments, activeId = null, onSeek = () =
             )}
           >
             <div className="flex items-start gap-2.5">
-              {anchor ? <AnchorMarker n={anchorIndex?.get(c.id)} color={anchorColor(c.id)} active={activeId === c.id} /> : <MemberAvatar name={c.authorName} size="sm" showTooltip={false} />}
+              {anchor ? <AnchorMarker n={anchorIndex?.get(c.id)} color={anchorDisplayColor(c.id, anchor)} active={activeId === c.id} /> : <MemberAvatar name={c.authorName} size="sm" showTooltip={false} />}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-xs font-semibold">{c.authorName ?? "Someone"}</span>
                   {c.timestampSeconds != null && (
                     <button onClick={() => onSeek(c.timestampSeconds!)} className="rounded bg-foreground px-1.5 font-mono text-[10px] font-semibold text-background hover:bg-brand">{formatTimestamp(c.timestampSeconds)}</button>
                   )}
-                  {anchor && <span className="text-2xs text-muted-foreground">{anchorLabel(anchor)}</span>}
+                  {anchor && <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">{anchor.strokes && <PenLine className="size-3" />}{anchorLabel(anchor)}</span>}
+                  {anchor && onToggleHidden && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onToggleHidden(c.id); }}
+                      aria-pressed={hiddenIds?.has(c.id) ?? false}
+                      aria-label={hiddenIds?.has(c.id) ? "Show this markup" : "Hide this markup"}
+                      title={hiddenIds?.has(c.id) ? "Show on document" : "Hide on document"}
+                      className={cn("rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground", hiddenIds?.has(c.id) && "text-brand")}
+                    >
+                      {hiddenIds?.has(c.id) ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+                    </button>
+                  )}
                   <span className="ml-auto shrink-0 text-2xs text-muted-foreground">{formatDistanceToNowStrict(new Date(c.createdAt), { addSuffix: true })}</span>
                   {jump && <ArrowUpRight className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />}
                 </div>
-                <p className="mt-1 whitespace-pre-line text-[13px] leading-5">{c.body}</p>
+                <p className="mt-1 whitespace-pre-line text-[13px] leading-5"><MentionText body={c.body} /></p>
                 <div onClick={(e) => e.stopPropagation()} className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
                   <Button variant="ghost" size="xs" onClick={() => { setReplyTo(c.id); setPinned(null); }}><CornerDownRight />Reply</Button>
                   <Button variant="ghost" size="xs" onClick={() => resolve.mutate({ workspace: ws.slug, commentId: c.id, resolved: !c.resolvedAt })}>{c.resolvedAt ? <><RotateCcw />Reopen</> : <><Check />Resolve</>}</Button>
@@ -150,7 +168,7 @@ export function CommentThread({ target, comments, activeId = null, onSeek = () =
                     <MemberAvatar name={r.authorName} size="xs" showTooltip={false} />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2"><span className="text-2xs font-semibold">{r.authorName ?? "Someone"}</span><span className="text-2xs text-muted-foreground">{formatDistanceToNowStrict(new Date(r.createdAt), { addSuffix: true })}</span></div>
-                      <p className="text-xs leading-4">{r.body}</p>
+                      <p className="whitespace-pre-line text-xs leading-4"><MentionText body={r.body} /></p>
                     </div>
                   </div>
                 ))}
@@ -167,11 +185,14 @@ export function CommentThread({ target, comments, activeId = null, onSeek = () =
         )}
         {draftAnchor && !replyTo && (
           <div className="mb-2 flex items-center justify-between rounded-md border border-brand/40 bg-brand-soft px-2 py-1 text-2xs">
-            <span className="flex items-center gap-1.5 text-brand"><SquareDashed className="size-3" />Pinned to a region{draftAnchor.kind === "pdf" ? ` on page ${draftAnchor.page}` : ""}</span>
+            <span className="flex items-center gap-1.5 text-brand">
+              {draftAnchor.strokes ? <><PenLine className="size-3" />{draftAnchor.strokes.length} stroke{draftAnchor.strokes.length === 1 ? "" : "s"} drawn</> : <><SquareDashed className="size-3" />Pinned to a region</>}
+              {draftAnchor.kind === "pdf" ? ` on page ${draftAnchor.page}` : ""}
+            </span>
             <button onClick={() => onClearDraftAnchor?.()} aria-label="Clear region" className="text-muted-foreground hover:text-foreground"><X className="size-3" /></button>
           </div>
         )}
-        <Textarea ref={textareaRef} value={body} onChange={(e) => setBody(e.target.value)} onFocus={onFocus} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit(); }} placeholder={timeCoded ? "Leave a note at the current time…" : draftAnchor ? "Describe the change for this region…" : onSelectComment ? "Drag a box on the page, or leave a general note…" : "Leave a note…"} rows={3} className="resize-none text-[13px]" />
+        <MentionTextarea ref={textareaRef} value={body} onValueChange={setBody} picked={picked} onPickedChange={setPicked} onFocus={onFocus} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") submit(); }} placeholder={timeCoded ? "Leave a note at the current time…" : draftAnchor?.strokes ? "What does the drawing mean?" : draftAnchor ? "Describe the change for this region…" : onSelectComment ? "Draw or box the part you mean, or leave a general note…" : "Leave a note… @ to mention someone"} rows={3} className="resize-none text-[13px]" />
         <div className="mt-2 flex items-center justify-between">
           {timeCoded && !replyTo ? (
             <label className="flex items-center gap-1.5 text-2xs text-muted-foreground">

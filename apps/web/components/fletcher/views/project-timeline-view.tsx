@@ -3,53 +3,85 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { AlertTriangle, ChevronDown, ChevronRight, Film, GanttChart, List, ListChecks, MessageSquare, Paperclip, Plus, Sparkles } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronRight, Film, GanttChart, List, ListChecks, MessageSquare, Paperclip, Plus, Sparkles, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { fmtDate, offsetLabel } from "@/lib/format";
-import { addDaysISO, diffDaysISO, todayISO, type TaskStatus } from "@fletcher/core";
-import { useProjectData, useInvalidateProject } from "@/lib/hooks/use-project-data";
+import { addDaysISO, diffDaysISO, MEMBER_ROLES, MEMBER_ROLE_LABELS, TASK_STATUSES, TASK_STATUS_LABELS, todayISO, type MemberRole, type TaskStatus } from "@fletcher/core";
+import { useProjectData, useInvalidateProject, useMembers } from "@/lib/hooks/use-project-data";
+import { usePersistedState } from "@/lib/hooks/use-persisted-state";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { StatusSelect, AssigneePicker, DatePill } from "@/components/fletcher/task-controls";
 import { RolePill } from "@/components/fletcher/role-pill";
 import { EmptyState } from "@/components/fletcher/empty-state";
+import { MemberAvatar } from "@/components/fletcher/member-avatar";
+import { FilterChip, chipClass } from "@/components/fletcher/filter-chip";
 import { useWorkspace } from "@/lib/hooks/use-workspace";
 import { useTaskParam } from "@/lib/hooks/use-task-param";
 
 type Task = NonNullable<ReturnType<typeof useProjectData>["data"]>["tasks"][number];
+
+// Same shape as the Overview work list's person filter, so the two read alike.
+type PersonFilter = { kind: "everyone" } | { kind: "mine" } | { kind: "member"; id: string; name: string } | { kind: "unassigned" };
+interface Filters {
+  person: PersonFilter;
+  roles: MemberRole[];
+  statuses: TaskStatus[];
+  phases: string[];
+  hideDone: boolean;
+}
+const NO_FILTERS: Filters = { person: { kind: "everyone" }, roles: [], statuses: [], phases: [], hideDone: false };
+
+function matches(t: Task, f: Filters, myMemberId: string): boolean {
+  if (f.hideDone && t.status === "done") return false;
+  if (f.person.kind === "mine" && t.assigneeMemberId !== myMemberId) return false;
+  if (f.person.kind === "member" && t.assigneeMemberId !== f.person.id) return false;
+  if (f.person.kind === "unassigned" && t.assigneeMemberId) return false;
+  if (f.roles.length && (!t.roleKey || !f.roles.includes(t.roleKey))) return false;
+  if (f.statuses.length && !f.statuses.includes(t.status)) return false;
+  if (f.phases.length && !f.phases.includes(t.phase)) return false;
+  return true;
+}
+
+function toggleIn<T>(list: T[], value: T): T[] {
+  return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
+}
 
 export function ProjectTimelineView() {
   const { data, isLoading, ws, projectId, trpc } = useProjectData();
   const invalidate = useInvalidateProject();
   const [mode, setMode] = useState<"list" | "gantt">("list");
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [hideDone, setHideDone] = useState(false);
+  // Filters stick per project so coming back from a task keeps the view.
+  const [filters, setFilters] = usePersistedState<Filters>(`fletcher:${ws.slug}:timeline-filters:${projectId}`, NO_FILTERS);
+  const members = useMembers();
+  const patch = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
+  const activeCount = (filters.person.kind !== "everyone" ? 1 : 0) + filters.roles.length + filters.statuses.length + filters.phases.length + (filters.hideDone ? 1 : 0);
   const [adding, setAdding] = useState(false);
   const today = todayISO();
   const { setTaskId } = useTaskParam();
 
   const createFromMilestone = useMutation(trpc.tasks.createProjectFromMilestone.mutationOptions({ onSuccess: async (p) => { await invalidate(); toast.success(`${p.name} created`); }, onError: (e) => toast.error(e.message) }));
 
+  const visible = useMemo(() => (data?.tasks ?? []).filter((t) => matches(t, filters, ws.memberId)), [data, filters, ws.memberId]);
   const groups = useMemo(() => {
     if (!data) return [];
     const phaseTitle = new Map(data.phases.map((p) => [p.key, p.title]));
     const order = new Map(data.phases.map((p, i) => [p.key, i]));
     const map = new Map<string, Task[]>();
-    for (const t of data.tasks) {
-      if (hideDone && t.status === "done") continue;
-      map.set(t.phase, [...(map.get(t.phase) ?? []), t]);
-    }
+    for (const t of visible) map.set(t.phase, [...(map.get(t.phase) ?? []), t]);
     return [...map.entries()]
       .sort((a, b) => (order.get(a[0]) ?? 99) - (order.get(b[0]) ?? 99))
       .map(([key, tasks]) => ({ key, title: phaseTitle.get(key) ?? key, tasks: tasks.sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? "")) }));
-  }, [data, hideDone]);
+  }, [data, visible]);
 
   if (isLoading || !data) return <Skeleton className="h-96 rounded-xl" />;
   const { project, warnings } = data;
@@ -64,12 +96,47 @@ export function ProjectTimelineView() {
             <ToggleGroupItem value="list" aria-label="List"><List />List</ToggleGroupItem>
             <ToggleGroupItem value="gantt" aria-label="Gantt"><GanttChart />Gantt</ToggleGroupItem>
           </ToggleGroup>
-          <Button variant={hideDone ? "secondary" : "ghost"} size="sm" onClick={() => setHideDone(!hideDone)}>{hideDone ? "Showing open" : "Hide done"}</Button>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-2xs text-muted-foreground">Offsets are relative to the {project.anchorLabel.toLowerCase()}</span>
           <Button size="sm" variant="outline" onClick={() => setAdding(true)}><Plus />Task</Button>
         </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-1">
+        <FilterChip active={filters.person.kind === "mine"} onClick={() => patch({ person: filters.person.kind === "mine" ? { kind: "everyone" } : { kind: "mine" } })}><MemberAvatar name={ws.userName} size="xs" showTooltip={false} className="size-4 text-[8px] ring-0" />Mine</FilterChip>
+        <FilterChip active={filters.person.kind === "everyone"} onClick={() => patch({ person: { kind: "everyone" } })}><Users className="size-3.5" />Everyone</FilterChip>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className={chipClass(filters.person.kind === "member" || filters.person.kind === "unassigned")}>
+              {filters.person.kind === "member" ? <><MemberAvatar name={filters.person.name} size="xs" showTooltip={false} className="size-4 text-[8px] ring-0" />{filters.person.name.split(" ")[0]}</> : filters.person.kind === "unassigned" ? "Unassigned" : "Person"}
+              <ChevronDown className="size-3" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuLabel>Assigned to</DropdownMenuLabel>
+            {(members.data ?? []).filter((m) => m.id !== ws.memberId).map((m) => (
+              <DropdownMenuItem key={m.id} onClick={() => patch({ person: { kind: "member", id: m.id, name: m.name } })}>
+                <MemberAvatar name={m.name} size="xs" showTooltip={false} />
+                <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                <span className="text-2xs text-muted-foreground">{MEMBER_ROLE_LABELS[m.role]}</span>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => patch({ person: { kind: "unassigned" } })}><MemberAvatar name={null} size="xs" showTooltip={false} />Unassigned</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <span className="mx-1 h-4 w-px bg-border" />
+        <MultiChip label="Role" values={filters.roles} labelOf={(r) => MEMBER_ROLE_LABELS[r]} options={MEMBER_ROLES.filter((r) => data.tasks.some((t) => t.roleKey === r))} onToggle={(r) => patch({ roles: toggleIn(filters.roles, r) })} />
+        <MultiChip label="Status" values={filters.statuses} labelOf={(s) => TASK_STATUS_LABELS[s]} options={[...TASK_STATUSES]} onToggle={(s) => patch({ statuses: toggleIn(filters.statuses, s) })} />
+        {data.phases.length > 1 && <MultiChip label="Phase" values={filters.phases} labelOf={(k) => data.phases.find((p) => p.key === k)?.title ?? k} options={data.phases.map((p) => p.key)} onToggle={(k) => patch({ phases: toggleIn(filters.phases, k) })} />}
+        <FilterChip active={filters.hideDone} onClick={() => patch({ hideDone: !filters.hideDone })}>Hide done</FilterChip>
+        {activeCount > 0 && (
+          <>
+            <span className="ml-1 text-2xs text-muted-foreground">{visible.length} of {data.tasks.length}</span>
+            <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => setFilters(NO_FILTERS)}><X />Clear</Button>
+          </>
+        )}
       </div>
 
       {warnings.filter((w) => w.severity === "error").length > 0 && (
@@ -83,6 +150,8 @@ export function ProjectTimelineView() {
 
       {data.tasks.length === 0 ? (
         <EmptyState title="No tasks" description="This project has no timeline template. Add tasks by hand." action={<Button size="sm" onClick={() => setAdding(true)}>Add task</Button>} />
+      ) : visible.length === 0 ? (
+        <EmptyState title="Nothing matches" description="No tasks match these filters." action={<Button variant="outline" size="sm" onClick={() => setFilters(NO_FILTERS)}>Clear filters</Button>} />
       ) : mode === "list" ? (
         <div className="surface overflow-hidden">
           {groups.map((g) => {
@@ -103,10 +172,28 @@ export function ProjectTimelineView() {
           })}
         </div>
       ) : (
-        <Gantt tasks={data.tasks.filter((t) => !hideDone || t.status !== "done")} phases={data.phases} anchor={project.anchorDate} anchorLabel={project.anchorLabel} today={today} />
+        <Gantt tasks={visible} phases={data.phases} anchor={project.anchorDate} anchorLabel={project.anchorLabel} today={today} />
       )}
       <AddTaskDialog open={adding} onOpenChange={setAdding} phases={data.phases} projectId={projectId} />
     </div>
+  );
+}
+
+/** A chip that opens a checklist; reads "Role" when nothing is picked, the picks when a few are, and a count past that. */
+function MultiChip<T extends string>({ label, values, options, labelOf, onToggle }: { label: string; values: T[]; options: T[]; labelOf: (v: T) => string; onToggle: (v: T) => void }) {
+  const text = values.length === 0 ? label : values.length <= 2 ? values.map(labelOf).join(", ") : `${label} · ${values.length}`;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className={chipClass(values.length > 0)}>{text}<ChevronDown className="size-3" /></button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        <DropdownMenuLabel>{label}</DropdownMenuLabel>
+        {options.map((o) => (
+          <DropdownMenuCheckboxItem key={o} checked={values.includes(o)} onCheckedChange={() => onToggle(o)} onSelect={(e) => e.preventDefault()}>{labelOf(o)}</DropdownMenuCheckboxItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

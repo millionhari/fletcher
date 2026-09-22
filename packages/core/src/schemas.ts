@@ -121,21 +121,36 @@ const normalizedRectSchema = z.object({
   h: z.number().min(0).max(1),
 });
 
+/**
+ * One freehand pen stroke. Points are normalized like rects; `width` is a
+ * fraction of the content width so the line stays the same weight relative to
+ * the picture at any zoom.
+ */
+const strokeSchema = z.object({
+  points: z.array(z.tuple([z.number().min(0).max(1), z.number().min(0).max(1)])).min(1),
+  color: z.string().min(1),
+  width: z.number().positive().max(0.1),
+});
+
 export const pdfCommentAnchorSchema = z.object({
   kind: z.literal("pdf"),
   page: z.number().int().min(1),
   rect: normalizedRectSchema,
+  /** Present when the comment was drawn rather than boxed; `rect` is then the strokes' bounds. */
+  strokes: z.array(strokeSchema).min(1).optional(),
 });
 
 /** Images are a single surface, so there is no page to carry. */
 export const imageCommentAnchorSchema = z.object({
   kind: z.literal("image"),
   rect: normalizedRectSchema,
+  strokes: z.array(strokeSchema).min(1).optional(),
 });
 
 export const commentAnchorSchema = z.discriminatedUnion("kind", [pdfCommentAnchorSchema, imageCommentAnchorSchema]);
 
 export type NormalizedRect = z.infer<typeof normalizedRectSchema>;
+export type Stroke = z.infer<typeof strokeSchema>;
 export type PdfCommentAnchor = z.infer<typeof pdfCommentAnchorSchema>;
 export type ImageCommentAnchor = z.infer<typeof imageCommentAnchorSchema>;
 export type CommentAnchor = z.infer<typeof commentAnchorSchema>;
@@ -156,4 +171,25 @@ export function anchorColor(commentId: string): string {
   let h = 0;
   for (const ch of commentId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return ANCHOR_COLORS[h % ANCHOR_COLORS.length]!;
+}
+
+/** A drawn comment keeps the pen colour the author picked; a boxed one gets the hashed colour. */
+export function anchorDisplayColor(commentId: string, anchor: Pick<CommentAnchor, "strokes"> | null | undefined): string {
+  return anchor?.strokes?.[0]?.color ?? anchorColor(commentId);
+}
+
+/** Pen colours offered in the viewer — a subset of the marker palette so drawings and boxes read as one family. */
+export const PEN_COLORS = ["#dc2626", "#d97706", "#059669", "#2e6be6", "#7c3aed"] as const;
+
+/** Smallest rect containing every stroke, padded a little so thick lines are not clipped at the edge. */
+export function strokesBounds(strokes: Stroke[]): NormalizedRect {
+  let x1 = 1, y1 = 1, x2 = 0, y2 = 0, pad = 0;
+  for (const s of strokes) {
+    pad = Math.max(pad, s.width);
+    for (const [x, y] of s.points) {
+      x1 = Math.min(x1, x); y1 = Math.min(y1, y); x2 = Math.max(x2, x); y2 = Math.max(y2, y);
+    }
+  }
+  x1 = Math.max(0, x1 - pad); y1 = Math.max(0, y1 - pad); x2 = Math.min(1, x2 + pad); y2 = Math.min(1, y2 + pad);
+  return { x: x1, y: y1, w: Math.max(0, x2 - x1), h: Math.max(0, y2 - y1) };
 }

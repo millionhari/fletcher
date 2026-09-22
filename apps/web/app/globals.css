@@ -252,6 +252,7 @@
 }
 .prose-fletcher:focus { outline: none; }
 .prose-fletcher > * + * { margin-top: 0.5rem; }
+.prose-fletcher .mention { @apply rounded bg-brand-soft px-0.5 font-medium text-brand; }
 .prose-fletcher h1 { @apply mt-4 text-lg font-semibold leading-6; }
 .prose-fletcher h2 { @apply mt-4 text-base font-semibold leading-6; }
 .prose-fletcher h3 { @apply mt-3 text-sm font-semibold; }

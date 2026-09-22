@@ -1,7 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import { MEMBER_ROLES, PERMISSIONS } from "@fletcher/core";
-import { users, workspaceMembers } from "@fletcher/db";
+import { MEMBER_ROLES, PERMISSIONS, todayISO } from "@fletcher/core";
+import { projects, tasks, users, workspaceMembers } from "@fletcher/db";
 import { TRPCError } from "@trpc/server";
 import { router, workspaceProcedure } from "../trpc";
 
@@ -24,7 +24,24 @@ export const membersRouter = router({
       .innerJoin(users, eq(workspaceMembers.userId, users.id))
       .where(eq(workspaceMembers.workspaceId, ctx.workspace.id))
       .orderBy(users.name);
-    return rows;
+    // Open workload per member across live projects, for the hover card on an assignee.
+    const today = todayISO();
+    const load = await ctx.db
+      .select({
+        memberId: tasks.assigneeMemberId,
+        open: sql<number>`count(*)::int`,
+        overdue: sql<number>`sum(case when ${tasks.dueDate} < ${today} then 1 else 0 end)::int`,
+        nextDue: sql<string | null>`min(case when ${tasks.dueDate} >= ${today} then ${tasks.dueDate} end)`,
+      })
+      .from(tasks)
+      .innerJoin(projects, eq(tasks.projectId, projects.id))
+      .where(and(eq(projects.workspaceId, ctx.workspace.id), ne(projects.status, "archived"), ne(tasks.status, "done")))
+      .groupBy(tasks.assigneeMemberId);
+    const byMember = new Map(load.map((l) => [l.memberId, l]));
+    return rows.map((r) => {
+      const l = byMember.get(r.id);
+      return { ...r, openTasks: l?.open ?? 0, overdueTasks: l?.overdue ?? 0, nextDueDate: l?.nextDue ?? null };
+    });
   }),
 
   add: workspaceProcedure

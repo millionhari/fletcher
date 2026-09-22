@@ -116,8 +116,8 @@ export const PdfViewer = forwardRef<AnnotatedViewerHandle, {
       onDraft={onDraft}
       fitKey={url}
       status={
-        loading ? <div className="flex h-80 items-center justify-center gap-2 text-xs text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading document…</div>
-        : error ? <div className="flex h-80 items-center justify-center px-6 text-center text-xs text-destructive">{error}</div>
+        loading ? <div className="flex flex-1 items-center justify-center gap-2 text-xs text-muted-foreground"><Loader2 className="size-4 animate-spin" />Loading document…</div>
+        : error ? <div className="flex flex-1 items-center justify-center px-6 text-center text-xs text-destructive">{error}</div>
         : null
       }
       leading={

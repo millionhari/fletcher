@@ -10,6 +10,8 @@ import TaskItem from "@tiptap/extension-task-item";
 import { Bold, Heading2, Italic, Link2, List, ListChecks, ListOrdered, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { useMembers } from "@/lib/hooks/use-project-data";
+import { DocMentionBridge, MENTION_HOST_ATTR, createDocMention } from "@/components/fletcher/mentions/doc-mention";
 
 export interface DocSave {
   doc: unknown;
@@ -24,15 +26,21 @@ export function TaskDocEditor({ initialDoc, seedText, onSave, saving, savedAt }:
   const [editing, setEditing] = useState(false);
   const snapshot = useRef<JSONContent | null>(null);
   const hasDoc = !!initialDoc;
+  const members = useMembers();
+  const [mentionBridge] = useState(() => new DocMentionBridge());
+  useEffect(() => {
+    mentionBridge.setMembers((members.data ?? []).map((m) => ({ id: m.id, name: m.name, role: m.role })));
+  }, [mentionBridge, members.data]);
   const editor = useEditor({
     immediatelyRender: false,
     editable: false,
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
-      Placeholder.configure({ placeholder: "Brief, notes, links, decisions…" }),
+      Placeholder.configure({ placeholder: "Brief, notes, links, decisions… @ to mention someone" }),
       Link.configure({ openOnClick: true, autolink: true, defaultProtocol: "https" }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      createDocMention(mentionBridge),
     ],
     content: (initialDoc as JSONContent | null) ?? (seedText ? `<p>${escapeHtml(seedText)}</p>` : ""),
     editorProps: { attributes: { class: "prose-fletcher min-h-[120px] px-1 py-1" } },
@@ -107,7 +115,7 @@ export function TaskDocEditor({ initialDoc, seedText, onSave, saving, savedAt }:
           </div>
         </div>
       )}
-      <div className={cn(editing ? "px-3 py-2" : "pb-2")}>
+      <div {...{ [MENTION_HOST_ATTR]: "" }} className={cn("relative", editing ? "px-3 py-2" : "pb-2")}>
         {!editing && isEmpty ? (
           <p className="py-4 text-[13px] text-muted-foreground">No brief yet. Use Edit to write one: what needs to happen, links, decisions.</p>
         ) : (

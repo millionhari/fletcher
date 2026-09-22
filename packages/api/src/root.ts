@@ -9,6 +9,7 @@ import { commentsRouter } from "./routers/comments";
 import { commsRouter } from "./routers/comms";
 import { dashboardRouter } from "./routers/dashboard";
 import { taskDetailRouter } from "./routers/task-detail";
+import { mentionsRouter } from "./routers/mentions";
 
 export const appRouter = router({
   workspace: workspaceRouter,
@@ -19,6 +20,7 @@ export const appRouter = router({
   taskDetail: taskDetailRouter,
   deliverables: deliverablesRouter,
   comments: commentsRouter,
+  mentions: mentionsRouter,
   comms: commsRouter,
   dashboard: dashboardRouter,
 });

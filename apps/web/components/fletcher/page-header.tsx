@@ -18,7 +18,7 @@ export function PageHeader({ title, description, eyebrow, actions, className, ch
 
 export function SectionHeader({ title, count, actions, className }: { title: React.ReactNode; count?: number; actions?: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("mb-2 flex items-center justify-between gap-3", className)}>
+    <div className={cn("mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-2", className)}>
       <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
         {title}
         {count !== undefined && <span className="tabular rounded-md bg-muted px-1.5 py-px text-2xs font-medium">{count}</span>}
