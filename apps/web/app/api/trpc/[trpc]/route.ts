@@ -13,7 +13,10 @@ const handler = (req: Request) =>
     router: appRouter,
     createContext: async () => createContext({ auth: await getAuthUser(), enqueue: (fn) => after(fn) }),
     onError({ error, path }) {
-      if (process.env.NODE_ENV !== "production") console.error(`tRPC ${path ?? "?"}:`, error.message);
+      // Always log server-side; the browser only ever sees the message. The
+      // cause is where a database or storage failure explains itself.
+      const cause = error.cause instanceof Error ? ` ← ${error.cause.message}` : "";
+      console.error(`tRPC ${path ?? "?"} [${error.code}]: ${error.message}${cause}`);
     },
   });
 

@@ -1,5 +1,10 @@
+"use client";
+
+import Link from "next/link";
 import { formatDistanceToNowStrict } from "date-fns";
 import { MemberAvatar } from "@/components/fletcher/member-avatar";
+import { MemberHoverCard } from "@/components/fletcher/member-hover-card";
+import { useWorkspace } from "@/lib/hooks/use-workspace";
 import { formatTimestamp } from "@fletcher/core";
 
 export interface ActivityEntry {
@@ -7,6 +12,9 @@ export interface ActivityEntry {
   type: string;
   payload: unknown;
   createdAt: Date | string;
+  projectId: string | null;
+  taskId: string | null;
+  actorMemberId: string | null;
   actorName: string | null;
   projectName: string | null;
 }
@@ -41,19 +49,51 @@ function describe(e: ActivityEntry): string {
   }
 }
 
+/** Where an entry points: the task, the deliverable under review, or the project. Older
+ *  deliverable entries predate `payload.deliverableId`, so they fall back to the project's list. */
+function hrefFor(e: ActivityEntry, base: string, compact?: boolean): string | null {
+  const p = (e.payload ?? {}) as Record<string, unknown>;
+  if (typeof p.deliverableId === "string") return `${base}/deliverables/${p.deliverableId}`;
+  if (!e.projectId) return null;
+  const project = `${base}/projects/${e.projectId}`;
+  // In the task panel every entry is about the open task, so a link would go nowhere new.
+  if (e.taskId) return compact ? null : `${project}/timeline?task=${e.taskId}`;
+  if (e.type === "version.added" || e.type === "deliverable.status" || e.type === "comment.added") return `${project}/deliverables`;
+  return project;
+}
+
 export function ActivityFeed({ entries, compact }: { entries: ActivityEntry[]; compact?: boolean }) {
+  const ws = useWorkspace();
   if (!entries.length) return <p className="px-1 text-xs text-muted-foreground">No activity yet.</p>;
+  const base = `/w/${ws.slug}`;
   return (
-    <ol className="space-y-3 px-1">
-      {entries.map((e) => (
-        <li key={e.id} className="flex gap-2.5">
-          <MemberAvatar name={e.actorName} size="xs" />
-          <div className="min-w-0 text-xs leading-4">
-            <span className="font-medium">{e.actorName ?? "Someone"}</span> <span className="text-muted-foreground">{describe(e)}</span>
-            <div className="text-2xs text-muted-foreground">{!compact && e.projectName ? `${e.projectName} · ` : ""}{formatDistanceToNowStrict(new Date(e.createdAt), { addSuffix: true })}</div>
-          </div>
-        </li>
-      ))}
+    <ol className="-mx-1">
+      {entries.map((e) => {
+        const href = hrefFor(e, base, compact);
+        const body = (
+          <>
+            <MemberHoverCard memberId={e.actorMemberId}>
+              <span className="shrink-0"><MemberAvatar name={e.actorName} size="xs" showTooltip={false} /></span>
+            </MemberHoverCard>
+            <div className="min-w-0 text-xs leading-4">
+              <MemberHoverCard memberId={e.actorMemberId}>
+                <span className="font-medium hover:underline">{e.actorName ?? "Someone"}</span>
+              </MemberHoverCard>{" "}
+              <span className="text-muted-foreground">{describe(e)}</span>
+              <div className="text-2xs text-muted-foreground">{!compact && e.projectName ? `${e.projectName} · ` : ""}{formatDistanceToNowStrict(new Date(e.createdAt), { addSuffix: true })}</div>
+            </div>
+          </>
+        );
+        return (
+          <li key={e.id}>
+            {href ? (
+              <Link href={href} className="flex gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/60 focus-visible:bg-muted/60 focus-visible:outline-none">{body}</Link>
+            ) : (
+              <div className="flex gap-2.5 px-2 py-1.5">{body}</div>
+            )}
+          </li>
+        );
+      })}
     </ol>
   );
 }

@@ -53,7 +53,7 @@ async function startImport(ctx: Ctx, t: Target, source: ImportSource, hint: { na
       .returning();
     versionId = v!.id;
     await ctx.db.update(deliverables).set({ status: "in_review", updatedAt: new Date() }).where(and(eq(deliverables.id, t.deliverableId), eq(deliverables.status, "draft")));
-    await ctx.db.insert(activityLog).values({ workspaceId: ctx.workspace.id, projectId, actorMemberId: ctx.member.id, type: "version.added", payload: { title: hint.name, version: versionNumber, importing: true } });
+    await ctx.db.insert(activityLog).values({ workspaceId: ctx.workspace.id, projectId, actorMemberId: ctx.member.id, type: "version.added", payload: { title: hint.name, version: versionNumber, importing: true, deliverableId: t.deliverableId } });
   } else {
     const [a] = await ctx.db
       .insert(taskAttachments)

@@ -27,7 +27,7 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps<
           workspace={{ slug: data.workspace.slug, name: data.workspace.name, artistName: data.workspace.artistName }}
           workspaces={workspaces.map((w) => ({ slug: w.slug, name: w.name, artistName: w.artistName }))}
           projects={projects.map((p) => ({ id: p.id, name: p.name, type: p.type, color: p.color, anchorDate: p.anchorDate, parentProjectId: p.parentProjectId }))}
-          user={{ name: data.user.name, email: data.user.email, avatarUrl: data.user.avatarUrl, devSession: devBypass() }}
+          user={{ name: data.user.name, email: data.user.email, avatarUrl: data.user.avatarUrl, devSession: devBypass(), isSuperadmin: data.user.isSuperadmin }}
         />
         <main className="@container/main min-w-0 flex-1">
           <div className="mx-auto max-w-[1280px] px-8 py-6">{children}</div>

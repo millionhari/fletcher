@@ -14,6 +14,7 @@ import { accountRouter } from "./routers/account";
 import { filesRouter } from "./routers/files";
 import { connectionsRouter } from "./routers/connections";
 import { importsRouter } from "./routers/imports";
+import { adminRouter } from "./routers/admin";
 
 export const appRouter = router({
   account: accountRouter,
@@ -29,6 +30,7 @@ export const appRouter = router({
   files: filesRouter,
   connections: connectionsRouter,
   imports: importsRouter,
+  admin: adminRouter,
   comms: commsRouter,
   dashboard: dashboardRouter,
 });

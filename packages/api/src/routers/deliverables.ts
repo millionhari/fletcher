@@ -103,7 +103,7 @@ export const deliverablesRouter = router({
         projectId: d.projectId,
         actorMemberId: ctx.member.id,
         type: "deliverable.status",
-        payload: { title: d.title, status: input.status },
+        payload: { title: d.title, status: input.status, deliverableId: d.id },
       });
       return updated!;
     }),
@@ -156,7 +156,7 @@ export const deliverablesRouter = router({
         projectId: d.projectId,
         actorMemberId: ctx.member.id,
         type: "version.added",
-        payload: { title: d.title, version: versionNumber },
+        payload: { title: d.title, version: versionNumber, deliverableId: d.id },
       });
       return version!;
     }),

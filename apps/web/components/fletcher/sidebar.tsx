@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AtSign, CalendarDays, ChevronsUpDown, FolderKanban, HardDrive, Images, LayoutGrid, LayoutTemplate, Moon, Plus, Search, Sun, Users } from "lucide-react";
+import { AtSign, CalendarDays, ChevronsUpDown, FolderKanban, HardDrive, Images, LayoutGrid, LayoutTemplate, Moon, Plus, Search, ShieldCheck, Sun, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTRPC } from "@/lib/trpc/client";
 import { PROJECT_TYPE_LABELS, type ProjectType } from "@fletcher/core";
@@ -29,7 +29,7 @@ export interface SidebarWorkspace {
   artistName: string;
 }
 
-export function Sidebar({ workspace, workspaces, projects, user }: { workspace: SidebarWorkspace; workspaces: SidebarWorkspace[]; projects: SidebarProject[]; user: { name: string; email: string; avatarUrl: string | null; devSession: boolean } }) {
+export function Sidebar({ workspace, workspaces, projects, user }: { workspace: SidebarWorkspace; workspaces: SidebarWorkspace[]; projects: SidebarProject[]; user: { name: string; email: string; avatarUrl: string | null; devSession: boolean; isSuperadmin: boolean } }) {
   const pathname = usePathname();
   const base = `/w/${workspace.slug}`;
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -110,6 +110,16 @@ export function Sidebar({ workspace, workspaces, projects, user }: { workspace: 
         })}
       </nav>
 
+      {user.isSuperadmin && (
+        <nav className="mt-2 px-2">
+          <Link href="/admin" className={cn("flex h-8 items-center gap-2.5 rounded-lg px-2 text-[13px] font-medium transition-colors", pathname.startsWith("/admin") ? "bg-sidebar-accent text-sidebar-accent-foreground" : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground")}>
+            <ShieldCheck className="size-4 text-brand" />
+            Admin
+            <span className="ml-auto rounded bg-brand-soft px-1 text-2xs font-medium text-brand">staff</span>
+          </Link>
+        </nav>
+      )}
+
       <div className="mt-5 flex items-center justify-between px-4">
         <span className="text-2xs font-semibold uppercase tracking-wider text-muted-foreground">Projects</span>
         <Button asChild variant="ghost" size="icon-xs" aria-label="New project">
@@ -136,7 +146,7 @@ export function Sidebar({ workspace, workspaces, projects, user }: { workspace: 
       </div>
 
       <div className="flex items-center gap-1 border-t border-sidebar-border px-1 py-1.5">
-        <div className="min-w-0 flex-1"><UserMenu name={user.name} email={user.email} avatarUrl={user.avatarUrl} devSession={user.devSession} /></div>
+        <div className="min-w-0 flex-1"><UserMenu name={user.name} email={user.email} avatarUrl={user.avatarUrl} devSession={user.devSession} isSuperadmin={user.isSuperadmin} /></div>
         <ThemeToggle />
       </div>
       <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} base={base} projects={projects} />

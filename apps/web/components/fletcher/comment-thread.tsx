@@ -12,10 +12,11 @@ import { useWorkspace } from "@/lib/hooks/use-workspace";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { MemberAvatar } from "@/components/fletcher/member-avatar";
+import { MemberHoverCard } from "@/components/fletcher/member-hover-card";
 import { MentionTextarea } from "@/components/fletcher/mentions/mention-textarea";
 import { MentionText } from "@/components/fletcher/mentions/mention-text";
 
-export type CommentRow = { id: string; body: string; timestampSeconds: number | null; anchor?: unknown; parentCommentId: string | null; resolvedAt: Date | null; createdAt: Date; authorName: string | null; authorRole: string | null };
+export type CommentRow = { id: string; body: string; timestampSeconds: number | null; anchor?: unknown; parentCommentId: string | null; resolvedAt: Date | null; createdAt: Date; authorMemberId: string | null; authorName: string | null; authorRole: string | null };
 
 /** Where the pin sits, spelled out — the marker already carries the identity. */
 function anchorLabel(a: CommentAnchor): string {
@@ -134,10 +135,10 @@ export function CommentThread({ target, comments, activeId = null, onSeek = () =
             )}
           >
             <div className="flex items-start gap-2.5">
-              {anchor ? <AnchorMarker n={anchorIndex?.get(c.id)} color={anchorDisplayColor(c.id, anchor)} active={activeId === c.id} /> : <MemberAvatar name={c.authorName} size="sm" showTooltip={false} />}
+              {anchor ? <AnchorMarker n={anchorIndex?.get(c.id)} color={anchorDisplayColor(c.id, anchor)} active={activeId === c.id} /> : <MemberHoverCard memberId={c.authorMemberId}><span className="shrink-0"><MemberAvatar name={c.authorName} size="sm" showTooltip={false} /></span></MemberHoverCard>}
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-xs font-semibold">{c.authorName ?? "Someone"}</span>
+                  <MemberHoverCard memberId={c.authorMemberId}><span className="truncate text-xs font-semibold">{c.authorName ?? "Someone"}</span></MemberHoverCard>
                   {c.timestampSeconds != null && (
                     <button onClick={() => onSeek(c.timestampSeconds!)} className="rounded bg-foreground px-1.5 font-mono text-[10px] font-semibold text-background hover:bg-brand">{formatTimestamp(c.timestampSeconds)}</button>
                   )}
@@ -165,9 +166,9 @@ export function CommentThread({ target, comments, activeId = null, onSeek = () =
                 </div>
                 {replies(c.id).map((r) => (
                   <div key={r.id} className="mt-2 flex items-start gap-2 border-l-2 border-border pl-2.5">
-                    <MemberAvatar name={r.authorName} size="xs" showTooltip={false} />
+                    <MemberHoverCard memberId={r.authorMemberId}><span className="shrink-0"><MemberAvatar name={r.authorName} size="xs" showTooltip={false} /></span></MemberHoverCard>
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2"><span className="text-2xs font-semibold">{r.authorName ?? "Someone"}</span><span className="text-2xs text-muted-foreground">{formatDistanceToNowStrict(new Date(r.createdAt), { addSuffix: true })}</span></div>
+                      <div className="flex items-center gap-2"><MemberHoverCard memberId={r.authorMemberId}><span className="text-2xs font-semibold">{r.authorName ?? "Someone"}</span></MemberHoverCard><span className="text-2xs text-muted-foreground">{formatDistanceToNowStrict(new Date(r.createdAt), { addSuffix: true })}</span></div>
                       <p className="whitespace-pre-line text-xs leading-4"><MentionText body={r.body} /></p>
                     </div>
                   </div>

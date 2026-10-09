@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronsUpDown, LogOut, Plug } from "lucide-react";
+import { ChevronsUpDown, LogOut, Plug, ShieldCheck } from "lucide-react";
 import { signOut } from "@/lib/auth/actions";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { MemberAvatar } from "@/components/fletcher/member-avatar";
 
 /** Sidebar footer: who you are, and the way out. */
-export function UserMenu({ name, email, avatarUrl, devSession }: { name: string; email: string; avatarUrl?: string | null; devSession: boolean }) {
+export function UserMenu({ name, email, avatarUrl, devSession, isSuperadmin }: { name: string; email: string; avatarUrl?: string | null; devSession: boolean; isSuperadmin?: boolean }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -27,6 +27,7 @@ export function UserMenu({ name, email, avatarUrl, devSession }: { name: string;
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild><Link href="/account/connections"><Plug className="text-muted-foreground" />Connections</Link></DropdownMenuItem>
+        {isSuperadmin && <DropdownMenuItem asChild><Link href="/admin"><ShieldCheck className="text-brand" />Admin</Link></DropdownMenuItem>}
         <DropdownMenuSeparator />
         <DropdownMenuItem disabled={devSession} onClick={() => signOut()}><LogOut className="text-muted-foreground" />Sign out</DropdownMenuItem>
       </DropdownMenuContent>

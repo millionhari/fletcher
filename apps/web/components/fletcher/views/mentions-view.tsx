@@ -16,6 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { PageHeader, SectionHeader } from "@/components/fletcher/page-header";
 import { EmptyState } from "@/components/fletcher/empty-state";
 import { MemberAvatar } from "@/components/fletcher/member-avatar";
+import { MemberHoverCard } from "@/components/fletcher/member-hover-card";
 import { MentionText } from "@/components/fletcher/mentions/mention-text";
 
 type Filter = "unread" | "all";
@@ -95,9 +96,9 @@ export function MentionsView() {
                     <TableCell>
                       <div className="flex items-start gap-2.5">
                         <span aria-hidden className={cn("mt-2 size-1.5 shrink-0 rounded-full", isUnread ? "bg-brand" : "bg-transparent")} />
-                        <MemberAvatar name={m.actorName} size="sm" showTooltip={false} />
+                        <MemberHoverCard memberId={m.actorMemberId}><span className="shrink-0"><MemberAvatar name={m.actorName} size="sm" showTooltip={false} /></span></MemberHoverCard>
                         <div className="min-w-0">
-                          <div className={cn("truncate", isUnread ? "font-semibold" : "font-medium")}>{m.actorName ?? "Someone"}</div>
+                          <div className="truncate"><MemberHoverCard memberId={m.actorMemberId}><span className={cn(isUnread ? "font-semibold" : "font-medium")}>{m.actorName ?? "Someone"}</span></MemberHoverCard></div>
                           {m.excerpt && <p className="line-clamp-2 whitespace-pre-line text-xs leading-4 text-muted-foreground"><MentionText body={m.excerpt} /></p>}
                         </div>
                       </div>

@@ -4,6 +4,7 @@ import { ensureSystemTemplates, workspaceMembers, workspaces } from "@fletcher/d
 import { TRPCError } from "@trpc/server";
 import { authedProcedure, router, workspaceProcedure } from "../trpc";
 import { PLANS } from "@fletcher/core";
+import { isSuperadmin } from "../admin";
 
 function slugify(s: string): string {
   return s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "workspace";
@@ -21,7 +22,7 @@ export const workspaceRouter = router({
   get: workspaceProcedure.query(async ({ ctx }) => ({
     workspace: ctx.workspace,
     member: ctx.member,
-    user: ctx.user,
+    user: { ...ctx.user, isSuperadmin: isSuperadmin(ctx.user.email) },
   })),
 
   /**
@@ -31,8 +32,7 @@ export const workspaceRouter = router({
   setPlan: workspaceProcedure
     .input(z.object({ plan: z.enum(PLANS), customQuotaGb: z.number().int().positive().max(100_000).nullable().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const admins = (process.env.FLETCHER_SUPERADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
-      if (!admins.includes(ctx.user.email.toLowerCase())) throw new TRPCError({ code: "FORBIDDEN", message: "Plans are managed by Fletcher for now" });
+      if (!isSuperadmin(ctx.user.email)) throw new TRPCError({ code: "FORBIDDEN", message: "Plans are managed by Fletcher for now" });
       const [ws] = await ctx.db.update(workspaces).set({ plan: input.plan, customQuotaGb: input.plan === "custom" ? input.customQuotaGb ?? null : null, updatedAt: new Date() }).where(eq(workspaces.id, ctx.workspace.id)).returning();
       return ws!;
     }),
